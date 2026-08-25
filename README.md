@@ -1,15 +1,18 @@
 # Rogue Apex Tracker
 
 Rogue Apex Tracker is a small standalone World of Warcraft Retail addon for
-Subtlety Deathstalker rogues. It measures whether an Ancient Arts empowered
-Darkest Night Eviscerate was cast inside a real Shadow Dance.
+Subtlety Deathstalker rogues. It tracks Darkest Night, Supercharged Black
+Powder, and Secret Technique as three independent APEX training statistics.
 
 The tracker snapshots Darkest Night and Ancient Arts when Eviscerate is sent,
 then records an in-Dance success only after that cast succeeds. Ancient Arts
 may be prepared before Shadow Dance and held for the valid Darkest Night
 Eviscerate. Normal empowered Eviscerates outside Dance are ignored. A miss is
 recorded only when Shadow Dance actually starts within three seconds after APEX
-was spent. It displays encounter and session totals, success percentages, and
+was spent. At four or more in-range targets, Black Powder is counted only when
+a Supercharged combo point was available, while Black Powder and Secret
+Technique use their Ancient Arts cast snapshot to determine an empowered
+success. It displays combat and longer-range totals, success percentages, and
 stores separate history snapshots for combats, boss encounters, and keystone
 dungeons.
 
@@ -23,6 +26,11 @@ seconds while that rule is enabled. Unknown range snapshots fail closed.
 
 - Subtlety Deathstalker eligibility gate
 - Confirmed Ancient Arts empowered Darkest Night Eviscerate detection
+- Separate empowered Black Powder and Secret Technique statistics at 4+ targets
+- Supercharged combo-point requirement for Black Powder attempts
+- Per-APEX dropdowns for tracker, history-only, or disabled tracking
+- User-selectable compact, time-range-row, or APEX-type-row tracker layout
+- User-selectable Darkest Night, Black Powder, and Secret Technique order
 - Real Shadow Dance state at Eviscerate cast time
 - Optional training warning for APEX spent within three seconds before Dance
 - Independently movable and configurable training alert
@@ -105,9 +113,20 @@ Session statistics remain reload-safe. Historical values are read only from
 completed snapshots and are never mixed into the live counters. The tracker
 automatically adds rows when more ranges are enabled.
 
+The **Statistics layout** dropdown controls whether ranges share compact rows,
+each enabled range receives its own row, or each enabled APEX type receives its
+own row. **APEX order** controls the left-to-right or top-to-bottom order without
+changing any tracking or history settings.
+
 The statistics browser contains a **Right Now** group for live Combat,
 Encounter, Dungeon, and Session values, followed by the existing archived
 Combat, Encounter, and Keystone history.
+
+Each APEX type has its own dropdown:
+
+- **Track and show** records the statistic and displays it on the movable tracker.
+- **Track in history only** records it without adding it to the compact tracker.
+- **Disabled** neither records nor displays that APEX type.
 
 ## Session behavior
 

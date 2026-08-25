@@ -19,6 +19,10 @@ local VALID_TYPES = {
 local selection = { type = "combat", index = HISTORY_LATEST }
 local historyFrame
 
+local function Counter(value)
+    return math.max(0, math.floor(tonumber(value) or 0))
+end
+
 local function Percent(successes, attempts)
     return attempts > 0 and successes * 100 / attempts or 0
 end
@@ -28,6 +32,45 @@ local function FormatPercent(value)
     if decimals == 0 then return string.format("%.0f%%", value) end
     if decimals == 2 then return string.format("%.2f%%", value) end
     return string.format("%.1f%%", value)
+end
+
+local function MetricMode(definition)
+    local mode = RAT.db and RAT.db[definition.modeKey]
+    return mode == "off" and "off" or mode == "history" and "history" or "show"
+end
+
+local function RowMetrics(row)
+    local definitions = RAT.METRIC_DEFS or {}
+    local metrics = type(row.metrics) == "table" and row.metrics or nil
+    if not metrics then
+        metrics = {}
+        local darkest = definitions[1] and definitions[1].key or "darkestNight"
+        metrics[darkest] = { successes = Counter(row.successes), attempts = Counter(row.attempts) }
+    end
+    for index = 1, #definitions do
+        local key = definitions[index].key
+        local counter = type(metrics[key]) == "table" and metrics[key] or {}
+        counter.attempts = Counter(counter.attempts)
+        counter.successes = math.min(Counter(counter.successes), counter.attempts)
+        metrics[key] = counter
+    end
+    return metrics
+end
+
+local function FormatMetricSummary(row)
+    local parts = {}
+    local metrics = RowMetrics(row)
+    local definitions = RAT.METRIC_DEFS or {}
+    for index = 1, #definitions do
+        local definition = definitions[index]
+        if MetricMode(definition) ~= "off" then
+            local counter = metrics[definition.key]
+            parts[#parts + 1] = string.format("%s %d/%d %s", definition.label,
+                counter.successes, counter.attempts,
+                FormatPercent(Percent(counter.successes, counter.attempts)))
+        end
+    end
+    return #parts > 0 and table.concat(parts, "   |   ") or "NO ENABLED APEX STATISTICS"
 end
 
 local function TypeLabel(historyType)
@@ -105,10 +148,8 @@ local function UpdateHistoryFrame()
         return
     end
 
-    local successes, attempts = row.successes or 0, row.attempts or 0
     historyFrame.TypeText:SetText(string.upper(TypeLabel(row.current and selection.type or row.type)))
-    historyFrame.SummaryText:SetText(string.format("APEX IN DANCE  %d/%d  %s",
-        successes, attempts, FormatPercent(Percent(successes, attempts))))
+    historyFrame.SummaryText:SetText(FormatMetricSummary(row))
     local label = row.type == "keystone"
         and string.format("%s +%d", row.mapName or row.label or "Keystone", tonumber(row.level) or 0)
         or row.label or TypeLabel(row.type)

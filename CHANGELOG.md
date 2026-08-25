@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.1 - 2026-08-25
+
+- Adds user-selectable statistics layouts: compact ranges, one time range per
+  row, or one APEX type per row.
+- Adds all six Darkest Night, Black Powder, and Secret Technique display-order
+  presets without changing which statistics are tracked or stored.
+
+## 1.4.0 - 2026-08-25
+
+- Separates Darkest Night, Supercharged Black Powder, and Secret Technique into
+  independent APEX statistic buckets for combat, encounter, dungeon, session,
+  and archived history ranges.
+- Adds one dropdown per APEX type with Track and show, Track in history only,
+  and Disabled modes.
+- Counts four-target Black Powder attempts only with a Supercharged combo point;
+  Black Powder and Secret Technique use their Ancient Arts cast snapshot to
+  determine an empowered success.
+- Replaces the single large statistic with compact DN, BP, and ST values on the
+  movable tracker while retaining full percentages in the history browser.
+
 ## 1.3.4 - 2026-08-25
 
 - Ignores normal Ancient Arts empowered Darkest Night Eviscerates outside

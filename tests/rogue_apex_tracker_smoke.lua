@@ -46,6 +46,12 @@ UISpecialFrames = {}
 MenuResponse = { Refresh = "refresh" }
 SlashCmdList = {}
 issecretvalue = function(value) return type(value) == "table" and value.secret == true end
+canaccesstable = function(value) return type(value) == "table" and value.secret ~= true end
+local chargedPowerPoints = {}
+GetUnitChargedPowerPoints = function(unit)
+    Expect(unit == "player", "charged combo-point query used the wrong unit")
+    return chargedPowerPoints
+end
 GetSpecialization = function() return 1 end
 GetSpecializationInfo = function() return 261 end
 GetTime = function() return now end
@@ -467,7 +473,7 @@ Expect(registeredSettingsPanel.name == "Rogue Apex Tracker",
 Expect(nativeControls.checkbox >= 16, "native checkbox controls were not registered")
 Expect(nativeControls.slider >= 13, "native slider controls were not registered")
 Expect(slidersWithFormatter == nativeControls.slider, "one or more sliders have no visible value formatter")
-Expect(nativeControls.dropdown == 3, "native dropdown controls were not registered")
+Expect(nativeControls.dropdown == 8, "native dropdown controls were not registered")
 Expect(nativeControls.color == 4, "native color controls were not registered")
 Expect(nativeControls.header == 1, "the first native section header was not registered")
 Expect(nativeControls.button >= 6, "native action buttons were not registered")
@@ -480,7 +486,7 @@ for index = 1, #customInitializers do
         sectionHeaderCount = sectionHeaderCount + 1
     end
 end
-Expect(supportInitializer and sectionHeaderCount == 9,
+Expect(supportInitializer and sectionHeaderCount == 10,
     "one or more divider-backed section headers or the subtle support footer were not registered")
 Expect(registeredSettingsPanel.layout.initializers[#registeredSettingsPanel.layout.initializers]
         == supportInitializer,
@@ -518,6 +524,20 @@ Expect(copyLinkPopup.EditBox.text == "https://ko-fi.com/midnightsimpleunitframes
 copyLinkPopup:Hide()
 Expect(registeredSettings.RAT_BELOW_FOUR_TARGETS ~= nil,
     "the separate below-four-target setting was not registered")
+Expect(registeredSettings.RAT_DARKEST_NIGHT_MODE and registeredSettings.RAT_BLACK_POWDER_MODE
+    and registeredSettings.RAT_SECRET_TECHNIQUE_MODE,
+    "the three independent APEX metric dropdowns were not registered")
+Expect(nativeDropdowns.RAT_DARKEST_NIGHT_MODE.getSelectionTextFunc() == "Track and show"
+    and nativeDropdowns.RAT_BLACK_POWDER_MODE.getSelectionTextFunc() == "Track and show"
+    and nativeDropdowns.RAT_SECRET_TECHNIQUE_MODE.getSelectionTextFunc() == "Track and show",
+    "the APEX metric dropdowns did not expose their selected modes")
+Expect(registeredSettings.RAT_STATS_LAYOUT and registeredSettings.RAT_METRIC_ORDER,
+    "the statistics layout and APEX order dropdowns were not registered")
+Expect(nativeDropdowns.RAT_STATS_LAYOUT.getSelectionTextFunc()
+        == "Compact - ranges side by side"
+    and nativeDropdowns.RAT_METRIC_ORDER.getSelectionTextFunc()
+        == "Darkest Night - Black Powder - Secret Technique",
+    "the statistics arrangement dropdowns did not expose their selected values")
 Expect(registeredSettings.RAT_TRAINING_MODE and registeredSettings.RAT_TRAINING_LOCKED
     and registeredSettings.RAT_TRAINING_OFFSET_X and registeredSettings.RAT_TRAINING_OFFSET_Y,
     "separate training-mode controls were not registered")
@@ -529,8 +549,14 @@ Expect(registeredSettings.RAT_SHOW_CURRENT_COMBAT and registeredSettings.RAT_SHO
 Expect(rangeEventFrame and rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == true,
     "strict target tracking did not activate its own nameplate roster")
 registeredSettings.RAT_BELOW_FOUR_TARGETS:SetValue(false)
+Expect(rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == true,
+    "AOE metric tracking lost the standalone nameplate roster when the Darkest Night gate was disabled")
+registeredSettings.RAT_BLACK_POWDER_MODE:SetValue("off")
+registeredSettings.RAT_SECRET_TECHNIQUE_MODE:SetValue("off")
 Expect(rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == nil,
-    "disabling strict target tracking left its own nameplate roster active")
+    "disabling every target-count consumer left its own nameplate roster active")
+registeredSettings.RAT_BLACK_POWDER_MODE:SetValue("show")
+registeredSettings.RAT_SECRET_TECHNIQUE_MODE:SetValue("show")
 registeredSettings.RAT_BELOW_FOUR_TARGETS:SetValue(true)
 Expect(rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == true,
     "re-enabling strict target tracking did not restore its own nameplate roster")
@@ -607,7 +633,8 @@ Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
     "training preview did not expire at the configured duration")
 registeredSettings.RAT_TRAINING_MODE:SetValue(true)
 Expect(display.shown == true, "eligible Subtlety Deathstalker did not show the tracker")
-Expect(display.fonts[2].text == "COMBAT 0/0  0.0%   SESSION 0/0  0.0%",
+Expect(display.fonts[2].text:find("COMBAT   DN 0/0   BP 0/0   ST 0/0", 1, true)
+    and display.fonts[2].text:find("SESSION   DN 0/0   BP 0/0   ST 0/0", 1, true),
     "initial live statistics text drifted")
 Expect(eventFrame.events.UNIT_AURA == nil, "tracker registered direct UNIT_AURA traffic")
 Expect(eventFrame.events.UNIT_SPELLCAST_SENT == "player"
@@ -667,7 +694,7 @@ Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
 local liveCombat = RAT:GetCurrentSnapshot("combat")
 Expect(liveCombat and liveCombat.successes == 0 and liveCombat.attempts == 0,
     "normal outside-Dance gameplay polluted the current-combat statistics")
-Expect(display.fonts[2].text == "COMBAT 0/0  0.0%   SESSION 0/0  0.0%",
+Expect(display.fonts[2].text:find("COMBAT   DN 0/0   BP 0/0   ST 0/0", 1, true),
     "normal outside-Dance gameplay changed the tracker text")
 Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
     "normal outside-Dance gameplay raised a training failure")
@@ -697,7 +724,7 @@ Expect(es == 0 and ea == 1 and ss == 0 and sa == 1,
 liveCombat = RAT:GetCurrentSnapshot("combat")
 Expect(liveCombat and liveCombat.successes == 0 and liveCombat.attempts == 1,
     "current-combat snapshot did not expose the confirmed pre-Dance miss")
-Expect(display.fonts[2].text == "COMBAT 0/1  0.0%   SESSION 0/1  0.0%",
+Expect(display.fonts[2].text:find("COMBAT   DN 0/1   BP 0/0   ST 0/0", 1, true),
     "tracker did not render the confirmed pre-Dance miss")
 Expect(RAT:IsTrainingAlertActive() == true and trainingDisplay.shown == true
     and trainingDisplay.fonts[1].text == "APEX MISSED - BEFORE SHADOW DANCE",
@@ -743,7 +770,7 @@ Expect(#RAT:GetHistory() == 1, "completed combat was not added to history")
 Expect(RAT:GetHistory()[1].successes == 1 and RAT:GetHistory()[1].attempts == 2,
     "history row did not preserve encounter statistics")
 registeredSettings.RAT_SHOW_LAST_COMBAT:SetValue(true)
-Expect(display.fonts[2].text:find("\nLAST COMBAT 1/2  50.0%", 1, true),
+Expect(display.fonts[2].text:find("\nLAST COMBAT   DN 1/2   BP 0/0   ST 0/0", 1, true),
     "optional last-combat snapshot was not added below the live statistics")
 registeredSettings.RAT_SHOW_LAST_COMBAT:SetValue(false)
 
@@ -788,7 +815,7 @@ local currentEncounter = RAT:GetCurrentSnapshot("encounter")
 Expect(currentEncounter and currentEncounter.successes == 1 and currentEncounter.attempts == 1,
     "current-encounter snapshot did not expose its live APEX result")
 registeredSettings.RAT_SHOW_CURRENT_ENCOUNTER:SetValue(true)
-Expect(display.fonts[2].text:find("ENCOUNTER 1/1  100.0%", 1, true),
+Expect(display.fonts[2].text:find("ENCOUNTER   DN 1/1   BP 0/0   ST 0/0", 1, true),
     "optional active encounter was not rendered on the tracker")
 registeredSettings.RAT_SHOW_CURRENT_ENCOUNTER:SetValue(false)
 now = now + 8
@@ -812,12 +839,14 @@ now = now + 90
 local currentKeystone = RAT:GetCurrentSnapshot("keystone")
 Expect(currentKeystone and currentKeystone.successes == 1 and currentKeystone.attempts == 2,
     "current-dungeon snapshot did not aggregate its live combats")
-Expect(display.fonts[2].text:find("DUNGEON 1/2  50.0%", 1, true),
+Expect(display.fonts[2].text:find("DUNGEON   DN 1/2   BP 0/0   ST 0/0", 1, true),
     "active dungeon total was not rendered on the tracker")
 RAT:OpenHistory("currentKeystone")
 local historyFrame = namedFrames.RogueApexTrackerHistoryFrame
 Expect(historyFrame.HistoryDropdown.overrideText == "Current Keystone Dungeon"
-    and historyFrame.SummaryText.text == "APEX IN DANCE  1/2  50.0%"
+    and historyFrame.SummaryText.text:find("DARKEST 1/2 50.0%", 1, true)
+    and historyFrame.SummaryText.text:find("BLACK POWDER 0/0 0.0%", 1, true)
+    and historyFrame.SummaryText.text:find("SECTECH 0/0 0.0%", 1, true)
     and historyFrame.DetailText.text:find("RIGHT NOW", 1, true),
     "statistics browser did not expose the active dungeon range")
 RAT:OpenHistory("session")
@@ -841,7 +870,7 @@ RAT:OpenHistory("keystone", -1)
 Expect(historyFrame and historyFrame.shown == true, "history browser did not open")
 Expect(historyFrame.HistoryDropdown.overrideText == "Last Keystone Dungeon",
     "history browser did not show the selected range")
-Expect(historyFrame.SummaryText.text == "APEX IN DANCE  1/2  50.0%",
+Expect(historyFrame.SummaryText.text:find("DARKEST 1/2 50.0%", 1, true),
     "history browser did not render selected keystone statistics")
 
 local historyRoot = NewMenuDescription("root")
@@ -868,10 +897,88 @@ Expect(#RAT:GetHistoryByType("combat") == 1 and #RAT:GetHistoryByType("encounter
     "history limit was not enforced independently per snapshot type")
 RAT.db.historyLimit = 20
 
+RAT:ResetSession()
+SetInRangeCount(4)
+chargedPowerPoints = { 2 }
+ancient:SetActive(false)
+eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_DISABLED")
+local function TriggerAoeFinisher(spellID)
+    castSerial = castSerial + 1
+    local castGUID = "Cast-AOE-" .. spellID .. "-" .. castSerial
+    eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SENT",
+        "player", "Target", castGUID, spellID)
+    eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SUCCEEDED",
+        "player", castGUID, spellID)
+end
+
+TriggerAoeFinisher(319175)
+ancient:SetActive(true)
+TriggerAoeFinisher(319175)
+chargedPowerPoints = {}
+TriggerAoeFinisher(319175)
+ancient:SetActive(false)
+TriggerAoeFinisher(280719)
+ancient:SetActive(true)
+TriggerAoeFinisher(280719)
+local bpES, bpEA, bpSS, bpSA = RAT:GetMetricStats("blackPowder")
+local stES, stEA, stSS, stSA = RAT:GetMetricStats("secretTechnique")
+Expect(bpES == 1 and bpEA == 2 and bpSS == 1 and bpSA == 2,
+    "empowered Black Powder statistics did not require four targets and a charged combo point")
+Expect(stES == 1 and stEA == 2 and stSS == 1 and stSA == 2,
+    "empowered Secret Technique statistics were not recorded independently")
+local aoeCombat = RAT:GetCurrentSnapshot("combat")
+Expect(aoeCombat.metrics.blackPowder.successes == 1
+    and aoeCombat.metrics.blackPowder.attempts == 2
+    and aoeCombat.metrics.secretTechnique.successes == 1
+    and aoeCombat.metrics.secretTechnique.attempts == 2,
+    "current combat did not retain the separate AOE metric buckets")
+Expect(display.fonts[2].text:find("COMBAT   DN 0/0   BP 1/2   ST 1/2", 1, true),
+    "compact tracker did not render all three APEX metrics")
+
+registeredSettings.RAT_BLACK_POWDER_MODE:SetValue("history")
+Expect(not display.fonts[2].text:find("BP 1/2", 1, true)
+    and display.fonts[2].text:find("ST 1/2", 1, true),
+    "history-only Black Powder mode remained visible on the movable tracker")
+registeredSettings.RAT_SECRET_TECHNIQUE_MODE:SetValue("off")
+TriggerAoeFinisher(280719)
+local _, disabledStAttempts = RAT:GetMetricStats("secretTechnique")
+Expect(disabledStAttempts == 0,
+    "disabled Secret Technique mode exposed tracked statistics")
+registeredSettings.RAT_BLACK_POWDER_MODE:SetValue("show")
+registeredSettings.RAT_SECRET_TECHNIQUE_MODE:SetValue("show")
+local _, restoredStAttempts = RAT:GetMetricStats("secretTechnique")
+Expect(restoredStAttempts == 2,
+    "disabled Secret Technique mode still recorded a successful cast")
+eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_ENABLED")
+local aoeHistory = RAT:GetHistoryEntry("combat", -1)
+Expect(aoeHistory.metrics.blackPowder.attempts == 2
+    and aoeHistory.metrics.secretTechnique.attempts == 2,
+    "archived combat did not preserve separate AOE metric buckets")
+
 RAT:SetPreview(true)
-Expect(display.shown == true and display.fonts[2].text
-    == "COMBAT 3/4  75.0%   DUNGEON 8/10  80.0%   SESSION 12/15  80.0%",
+Expect(display.shown == true
+    and display.fonts[2].text:find("COMBAT   DN 1/2   BP 2/3   ST 3/3", 1, true)
+    and display.fonts[2].text:find("DUNGEON   DN 3/4   BP 4/5   ST 5/5", 1, true)
+    and display.fonts[2].text:find("SESSION   DN 4/5   BP 5/6   ST 6/6", 1, true),
     "preview did not show sample statistics")
+registeredSettings.RAT_METRIC_ORDER:SetValue(
+    "secretTechnique,blackPowder,darkestNight")
+Expect(display.fonts[2].text:find("COMBAT   ST 3/3   BP 2/3   DN 1/2", 1, true),
+    "custom APEX order was not applied to the compact tracker")
+registeredSettings.RAT_STATS_LAYOUT:SetValue("rangeRows")
+Expect(display.fonts[2].text:find(
+        "COMBAT   ST 3/3   BP 2/3   DN 1/2\nDUNGEON", 1, true)
+    and display.fonts[2].text:find("\nSESSION", 1, true),
+    "one-time-range-per-row layout was not applied")
+registeredSettings.RAT_STATS_LAYOUT:SetValue("metricRows")
+Expect(display.fonts[2].text:find(
+        "SECTECH   COMBAT 3/3 100.0%   DUNGEON 5/5 100.0%", 1, true)
+    and display.fonts[2].text:find("\nBLACK POWDER", 1, true)
+    and display.fonts[2].text:find("\nDARKEST", 1, true),
+    "one-APEX-type-per-row layout was not applied in the selected order")
+registeredSettings.RAT_STATS_LAYOUT:SetValue("compact")
+registeredSettings.RAT_METRIC_ORDER:SetValue(
+    "darkestNight,blackPowder,secretTechnique")
 RAT:SetPreview(false)
 RAT.db.enabled = false
 RAT:NotifySettingsChanged()

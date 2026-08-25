@@ -10,12 +10,48 @@ local SHADOW_DANCE_AURA_ID = 185422
 local SHADOW_DANCE_SPELL_ID = 185313
 local SUBTLETY_SPEC_ID = 261
 local EVISCERATE_RANGE_SPELL_ID = 196819
+local BLACK_POWDER_SPELL_ID = 319175
+local SECRET_TECHNIQUE_SPELL_ID = 280719
 local DANCE_LEAD_WINDOW = 3
 local DANCE_CAST_GRACE = 0.50
 local RANGE_SCAN_INTERVAL = 0.20
 local ROLE_DARKEST = "darkestNight"
 local ROLE_ANCIENT = "ancientArts"
 local ROLE_DANCE = "shadowDance"
+local METRIC_DARKEST = "darkestNight"
+local METRIC_BLACK_POWDER = "blackPowder"
+local METRIC_SECRET_TECHNIQUE = "secretTechnique"
+local METRIC_DEFS = {
+    { key = METRIC_DARKEST, modeKey = "darkestNightMode", short = "DN", label = "DARKEST" },
+    { key = METRIC_BLACK_POWDER, modeKey = "blackPowderMode", short = "BP", label = "BLACK POWDER" },
+    { key = METRIC_SECRET_TECHNIQUE, modeKey = "secretTechniqueMode", short = "ST", label = "SECTECH" },
+}
+local DEFAULT_METRIC_ORDER = "darkestNight,blackPowder,secretTechnique"
+local METRIC_ORDER_KEYS = {
+    ["darkestNight,blackPowder,secretTechnique"] = {
+        METRIC_DARKEST, METRIC_BLACK_POWDER, METRIC_SECRET_TECHNIQUE,
+    },
+    ["darkestNight,secretTechnique,blackPowder"] = {
+        METRIC_DARKEST, METRIC_SECRET_TECHNIQUE, METRIC_BLACK_POWDER,
+    },
+    ["blackPowder,darkestNight,secretTechnique"] = {
+        METRIC_BLACK_POWDER, METRIC_DARKEST, METRIC_SECRET_TECHNIQUE,
+    },
+    ["blackPowder,secretTechnique,darkestNight"] = {
+        METRIC_BLACK_POWDER, METRIC_SECRET_TECHNIQUE, METRIC_DARKEST,
+    },
+    ["secretTechnique,darkestNight,blackPowder"] = {
+        METRIC_SECRET_TECHNIQUE, METRIC_DARKEST, METRIC_BLACK_POWDER,
+    },
+    ["secretTechnique,blackPowder,darkestNight"] = {
+        METRIC_SECRET_TECHNIQUE, METRIC_BLACK_POWDER, METRIC_DARKEST,
+    },
+}
+local METRIC_DEF_BY_KEY = {}
+for index = 1, #METRIC_DEFS do
+    METRIC_DEF_BY_KEY[METRIC_DEFS[index].key] = METRIC_DEFS[index]
+end
+local VALID_STATS_LAYOUT = { compact = true, rangeRows = true, metricRows = true }
 local VIEWER_NAMES = { "EssentialCooldownViewer", "BuffIconCooldownViewer", "BuffBarCooldownViewer" }
 local FALLBACK_FONT = "Fonts\\FRIZQT__.TTF"
 
@@ -43,6 +79,11 @@ local defaults = {
     historyLimit = 20,
     historyOnlyWithAttempts = true,
     onlyCountBelowFourTargets = true,
+    darkestNightMode = "show",
+    blackPowderMode = "show",
+    secretTechniqueMode = "show",
+    statsLayout = "compact",
+    metricOrder = DEFAULT_METRIC_ORDER,
     showCurrentCombat = true,
     showCurrentEncounter = false,
     showCurrentDungeon = true,
@@ -62,6 +103,7 @@ local defaults = {
     history = {},
 }
 RAT.DEFAULTS = defaults
+RAT.METRIC_DEFS = METRIC_DEFS
 
 local state = {
     encounterAttempts = 0,
@@ -70,6 +112,7 @@ local state = {
     sessionSuccesses = 0,
     pendingEviscerate = nil,
     recentPreDanceEviscerate = nil,
+    pendingAoeFinisher = nil,
     lastDanceStartedAt = nil,
     preview = false,
     combatSegment = nil,
@@ -81,6 +124,8 @@ local state = {
     trainingAlertActive = false,
     trainingPreviewActive = false,
     trainingAlertGeneration = 0,
+    encounterMetrics = {},
+    sessionMetrics = {},
 }
 
 local roleByCooldownID = {}
@@ -164,8 +209,103 @@ local function Counter(value)
     return math.max(0, value)
 end
 
+local function NewMetricCounters()
+    return {
+        [METRIC_DARKEST] = { successes = 0, attempts = 0 },
+        [METRIC_BLACK_POWDER] = { successes = 0, attempts = 0 },
+        [METRIC_SECRET_TECHNIQUE] = { successes = 0, attempts = 0 },
+    }
+end
+
+local function NormalizeMetricCounters(metrics)
+    if type(metrics) ~= "table" then metrics = {} end
+    for index = 1, #METRIC_DEFS do
+        local key = METRIC_DEFS[index].key
+        local counter = type(metrics[key]) == "table" and metrics[key] or {}
+        counter.attempts = Counter(counter.attempts)
+        counter.successes = math.min(Counter(counter.successes), counter.attempts)
+        metrics[key] = counter
+    end
+    return metrics
+end
+
+local function CopyMetricCounters(metrics)
+    metrics = NormalizeMetricCounters(metrics)
+    local result = NewMetricCounters()
+    for index = 1, #METRIC_DEFS do
+        local key = METRIC_DEFS[index].key
+        result[key].attempts = metrics[key].attempts
+        result[key].successes = metrics[key].successes
+    end
+    return result
+end
+
+local function EnsureOwnerMetrics(owner)
+    if type(owner) ~= "table" then return NewMetricCounters() end
+    if type(owner.metrics) ~= "table" then
+        owner.metrics = NewMetricCounters()
+        -- Existing 1.3.x data represented only the Darkest Night statistic.
+        owner.metrics[METRIC_DARKEST].attempts = Counter(owner.attempts)
+        owner.metrics[METRIC_DARKEST].successes = math.min(
+            Counter(owner.successes), owner.metrics[METRIC_DARKEST].attempts)
+    end
+    owner.metrics = NormalizeMetricCounters(owner.metrics)
+    return owner.metrics
+end
+
+local function MetricTotals(metrics)
+    local successes, attempts = 0, 0
+    metrics = NormalizeMetricCounters(metrics)
+    for index = 1, #METRIC_DEFS do
+        local counter = metrics[METRIC_DEFS[index].key]
+        successes = successes + counter.successes
+        attempts = attempts + counter.attempts
+    end
+    return successes, attempts
+end
+
+local function SyncOwnerTotals(owner)
+    if type(owner) ~= "table" then return end
+    owner.successes, owner.attempts = MetricTotals(EnsureOwnerMetrics(owner))
+end
+
+local function MetricMode(metricKey)
+    for index = 1, #METRIC_DEFS do
+        local definition = METRIC_DEFS[index]
+        if definition.key == metricKey then
+            local mode = RAT.db and RAT.db[definition.modeKey]
+            if mode == "off" or mode == "history" or mode == "show" then return mode end
+            return "show"
+        end
+    end
+    return "off"
+end
+
+local function MetricIsTracked(metricKey)
+    return MetricMode(metricKey) ~= "off"
+end
+
+local function MetricIsShown(metricKey)
+    return MetricMode(metricKey) == "show"
+end
+
+local function AnyMetricShown()
+    for index = 1, #METRIC_DEFS do
+        if MetricIsShown(METRIC_DEFS[index].key) then return true end
+    end
+    return false
+end
+
+local function SyncStateTotals()
+    state.encounterMetrics = NormalizeMetricCounters(state.encounterMetrics)
+    state.sessionMetrics = NormalizeMetricCounters(state.sessionMetrics)
+    state.encounterSuccesses, state.encounterAttempts = MetricTotals(state.encounterMetrics)
+    state.sessionSuccesses, state.sessionAttempts = MetricTotals(state.sessionMetrics)
+end
+
 local function SaveSessionState()
     if not RAT.db then return end
+    SyncStateTotals()
     local saved = RAT.db.sessionState
     if type(saved) ~= "table" then
         saved = {}
@@ -177,6 +317,8 @@ local function SaveSessionState()
     saved.encounterSuccesses = state.encounterSuccesses
     saved.sessionAttempts = state.sessionAttempts
     saved.sessionSuccesses = state.sessionSuccesses
+    saved.encounterMetrics = CopyMetricCounters(state.encounterMetrics)
+    saved.sessionMetrics = CopyMetricCounters(state.sessionMetrics)
 end
 
 local function StartNewSession()
@@ -184,6 +326,8 @@ local function StartNewSession()
     state.encounterSuccesses = 0
     state.sessionAttempts = 0
     state.sessionSuccesses = 0
+    state.encounterMetrics = NewMetricCounters()
+    state.sessionMetrics = NewMetricCounters()
     state.sessionID = NewSessionID()
     state.clientStartedAt = ClientStartedAt()
     SaveSessionState()
@@ -206,10 +350,23 @@ local function RestoreSessionState()
 
     state.clientStartedAt = clientStartedAt or savedClientStartedAt
     state.sessionID = type(saved.id) == "string" and saved.id or NewSessionID()
-    state.encounterAttempts = Counter(saved.encounterAttempts)
-    state.encounterSuccesses = math.min(Counter(saved.encounterSuccesses), state.encounterAttempts)
-    state.sessionAttempts = Counter(saved.sessionAttempts)
-    state.sessionSuccesses = math.min(Counter(saved.sessionSuccesses), state.sessionAttempts)
+    if type(saved.encounterMetrics) == "table" then
+        state.encounterMetrics = CopyMetricCounters(saved.encounterMetrics)
+    else
+        state.encounterMetrics = NewMetricCounters()
+        state.encounterMetrics[METRIC_DARKEST].attempts = Counter(saved.encounterAttempts)
+        state.encounterMetrics[METRIC_DARKEST].successes = math.min(
+            Counter(saved.encounterSuccesses), state.encounterMetrics[METRIC_DARKEST].attempts)
+    end
+    if type(saved.sessionMetrics) == "table" then
+        state.sessionMetrics = CopyMetricCounters(saved.sessionMetrics)
+    else
+        state.sessionMetrics = NewMetricCounters()
+        state.sessionMetrics[METRIC_DARKEST].attempts = Counter(saved.sessionAttempts)
+        state.sessionMetrics[METRIC_DARKEST].successes = math.min(
+            Counter(saved.sessionSuccesses), state.sessionMetrics[METRIC_DARKEST].attempts)
+    end
+    SyncStateTotals()
     SaveSessionState()
     return true
 end
@@ -238,7 +395,11 @@ local function IsEligible()
 end
 
 local function RangeTrackingActive()
-    return IsEligible() and RAT.db.onlyCountBelowFourTargets == true
+    return IsEligible() and (
+        RAT.db.onlyCountBelowFourTargets == true
+        or MetricIsTracked(METRIC_BLACK_POWDER)
+        or MetricIsTracked(METRIC_SECRET_TECHNIQUE)
+    )
 end
 
 local function IsNameplateUnit(unit)
@@ -390,6 +551,10 @@ local function DarkestNightTargetRuleEligible()
         and state.inRangeTargetCount < 4
 end
 
+local function AoeTargetRuleEligible()
+    return state.rangeSnapshotValid == true and state.inRangeTargetCount >= 4
+end
+
 local function SafeActive(frame)
     if not frame or type(frame.IsActive) ~= "function" then return false end
     local ok, active = pcall(frame.IsActive, frame)
@@ -424,6 +589,14 @@ end
 
 local function IsEviscerateSpellID(spellID)
     return IsSpellOrBaseSpellID(spellID, EVISCERATE_RANGE_SPELL_ID)
+end
+
+local function IsBlackPowderSpellID(spellID)
+    return IsSpellOrBaseSpellID(spellID, BLACK_POWDER_SPELL_ID)
+end
+
+local function IsSecretTechniqueSpellID(spellID)
+    return IsSpellOrBaseSpellID(spellID, SECRET_TECHNIQUE_SPELL_ID)
 end
 
 local function IsShadowDanceSpellID(spellID)
@@ -512,19 +685,66 @@ end
 local function RefreshText()
     if not statsText then return end
 
-    local function FormatRange(label, successes, attempts)
-        successes = Counter(successes)
-        attempts = Counter(attempts)
-        return string.format("%s %d/%d  %s", label, successes, attempts,
-            FormatPercent(Percent(successes, attempts)))
+    local orderedKeys = METRIC_ORDER_KEYS[RAT.db and RAT.db.metricOrder]
+        or METRIC_ORDER_KEYS[DEFAULT_METRIC_ORDER]
+    local visibleMetrics = {}
+    for index = 1, #orderedKeys do
+        local definition = METRIC_DEF_BY_KEY[orderedKeys[index]]
+        if definition and MetricIsShown(definition.key) then
+            visibleMetrics[#visibleMetrics + 1] = definition
+        end
+    end
+    if #visibleMetrics == 0 then
+        statsText:SetText("")
+        statsText:Hide()
+        if display then display:SetHeight(72) end
+        if RAT.RefreshOptions then RAT:RefreshOptions() end
+        if RAT.RefreshHistory then RAT:RefreshHistory() end
+        return
     end
 
-    local function AddRange(parts, enabled, label, row, previewSuccesses, previewAttempts)
+    local function PreviewMetrics(seed)
+        local metrics = NewMetricCounters()
+        metrics[METRIC_DARKEST].successes, metrics[METRIC_DARKEST].attempts = seed, seed + 1
+        metrics[METRIC_BLACK_POWDER].successes, metrics[METRIC_BLACK_POWDER].attempts = seed + 1, seed + 2
+        metrics[METRIC_SECRET_TECHNIQUE].successes, metrics[METRIC_SECRET_TECHNIQUE].attempts = seed + 2, seed + 2
+        return metrics
+    end
+
+    local function FormatRange(label, metrics)
+        metrics = NormalizeMetricCounters(metrics)
+        if #visibleMetrics == 0 then return nil end
+
+        local parts = { label }
+        for index = 1, #visibleMetrics do
+            local definition = visibleMetrics[index]
+            local counter = metrics[definition.key]
+            if #visibleMetrics == 1 then
+                parts[#parts + 1] = string.format("%s %d/%d %s", definition.label,
+                    counter.successes, counter.attempts,
+                    FormatPercent(Percent(counter.successes, counter.attempts)))
+            else
+                parts[#parts + 1] = string.format("%s %d/%d", definition.short,
+                    counter.successes, counter.attempts)
+            end
+        end
+        return table.concat(parts, "   ")
+    end
+
+    local function AddRange(parts, enabled, label, row, previewSeed)
         if enabled ~= true then return end
+        local metrics
         if state.preview then
-            parts[#parts + 1] = FormatRange(label, previewSuccesses, previewAttempts)
+            metrics = PreviewMetrics(previewSeed)
         elseif row then
-            parts[#parts + 1] = FormatRange(label, row.successes, row.attempts)
+            metrics = EnsureOwnerMetrics(row)
+        end
+        if metrics then
+            parts[#parts + 1] = {
+                label = label,
+                metrics = metrics,
+                text = FormatRange(label, metrics),
+            }
         end
     end
 
@@ -537,31 +757,55 @@ local function RefreshText()
     end
 
     local current, archived = {}, {}
-    local combat = state.combatSegment or { successes = 0, attempts = 0 }
-    AddRange(current, RAT.db.showCurrentCombat, "COMBAT", combat, 3, 4)
-    AddRange(current, RAT.db.showCurrentEncounter, "ENCOUNTER", state.encounterSegment, 2, 3)
-    AddRange(current, RAT.db.showCurrentDungeon, "DUNGEON", state.keystoneSegment, 8, 10)
+    local combat = state.combatSegment or { metrics = NewMetricCounters() }
+    AddRange(current, RAT.db.showCurrentCombat, "COMBAT", combat, 1)
+    AddRange(current, RAT.db.showCurrentEncounter, "ENCOUNTER", state.encounterSegment, 2)
+    AddRange(current, RAT.db.showCurrentDungeon, "DUNGEON", state.keystoneSegment, 3)
     AddRange(current, RAT.db.showSession, "SESSION", {
-        successes = state.sessionSuccesses,
-        attempts = state.sessionAttempts,
-    }, 12, 15)
+        metrics = state.sessionMetrics,
+    }, 4)
 
-    AddRange(archived, RAT.db.showLastCombat, "LAST COMBAT", LatestHistory("combat"), 1, 2)
-    AddRange(archived, RAT.db.showLastEncounter, "LAST ENCOUNTER", LatestHistory("encounter"), 4, 5)
-    AddRange(archived, RAT.db.showLastDungeon, "LAST DUNGEON", LatestHistory("keystone"), 14, 18)
+    AddRange(archived, RAT.db.showLastCombat, "LAST COMBAT", LatestHistory("combat"), 5)
+    AddRange(archived, RAT.db.showLastEncounter, "LAST ENCOUNTER", LatestHistory("encounter"), 6)
+    AddRange(archived, RAT.db.showLastDungeon, "LAST DUNGEON", LatestHistory("keystone"), 7)
 
     local lines = {}
-    local function AppendWrapped(parts)
-        if #parts == 0 then return end
-        if #parts <= 3 then
+    local layout = VALID_STATS_LAYOUT[RAT.db and RAT.db.statsLayout]
+        and RAT.db.statsLayout or defaults.statsLayout
+    if layout == "metricRows" then
+        local ranges = {}
+        for index = 1, #current do ranges[#ranges + 1] = current[index] end
+        for index = 1, #archived do ranges[#ranges + 1] = archived[index] end
+        for metricIndex = 1, #visibleMetrics do
+            local definition = visibleMetrics[metricIndex]
+            local parts = { definition.label }
+            for rangeIndex = 1, #ranges do
+                local range = ranges[rangeIndex]
+                local counter = range.metrics[definition.key]
+                parts[#parts + 1] = string.format("%s %d/%d %s", range.label,
+                    counter.successes, counter.attempts,
+                    FormatPercent(Percent(counter.successes, counter.attempts)))
+            end
             lines[#lines + 1] = table.concat(parts, "   ")
-        else
-            lines[#lines + 1] = table.concat({ parts[1], parts[2] }, "   ")
-            lines[#lines + 1] = table.concat({ parts[3], parts[4] }, "   ")
         end
+    elseif layout == "rangeRows" then
+        for index = 1, #current do lines[#lines + 1] = current[index].text end
+        for index = 1, #archived do lines[#lines + 1] = archived[index].text end
+    else
+        local function AppendWrapped(parts)
+            if #parts == 0 then return end
+            if #parts <= 3 then
+                local texts = {}
+                for index = 1, #parts do texts[index] = parts[index].text end
+                lines[#lines + 1] = table.concat(texts, "   ")
+            else
+                lines[#lines + 1] = parts[1].text .. "   " .. parts[2].text
+                lines[#lines + 1] = parts[3].text .. "   " .. parts[4].text
+            end
+        end
+        AppendWrapped(current)
+        AppendWrapped(archived)
     end
-    AppendWrapped(current)
-    AppendWrapped(archived)
 
     statsText:SetText(table.concat(lines, "\n"))
     statsText:SetShown(#lines > 0)
@@ -742,7 +986,7 @@ local function EnsureDisplay()
         display._ratHeaderText = headerText
         headerText:SetPoint("BOTTOM", display, "CENTER", 0, 4)
         headerText:SetFont(FALLBACK_FONT, defaults.headerSize, defaults.outline)
-        headerText:SetText("DARKEST NIGHT EMPOWERED IN SHADOW DANCE")
+        headerText:SetText("APEX EMPOWERMENT")
     end
 
     statsText = statsText or display._ratStatsText
@@ -805,7 +1049,7 @@ function RAT:ApplySettings()
         frame:SetBackdropBorderColor(0, 0, 0, 0)
     end
     RefreshText()
-    frame:SetShown(state.preview or IsEligible())
+    frame:SetShown(state.preview or (IsEligible() and AnyMetricShown()))
     ApplyTrainingSettings()
 end
 
@@ -840,6 +1084,7 @@ local function NewSegment(historyType, label, metadata)
         label = label,
         attempts = 0,
         successes = 0,
+        metrics = NewMetricCounters(),
         startedAt = type(GetTime) == "function" and GetTime() or 0,
         timestamp = type(time) == "function" and time() or 0,
     }
@@ -856,6 +1101,7 @@ local function ArchiveSegment(segmentKey, result)
     if type(result) == "table" then
         for key, value in pairs(result) do segment[key] = value end
     end
+    SyncOwnerTotals(segment)
     if segment.attempts == 0 and RAT.db.historyOnlyWithAttempts ~= false then
         NotifyHistoryChanged()
         return
@@ -867,6 +1113,7 @@ local function ArchiveSegment(segmentKey, result)
         label = segment.label or "Combat",
         successes = segment.successes,
         attempts = segment.attempts,
+        metrics = CopyMetricCounters(segment.metrics),
         duration = math.max(0, math.floor(((type(GetTime) == "function" and GetTime() or segment.startedAt) - segment.startedAt) + 0.5)),
         encounterID = segment.encounterID,
         difficultyID = segment.difficultyID,
@@ -889,6 +1136,9 @@ local function ResetLiveRange()
     state.pendingEviscerate = nil
     state.recentPreDanceEviscerate = nil
     state.lastDanceStartedAt = nil
+    state.pendingAoeFinisher = nil
+    state.encounterMetrics = NewMetricCounters()
+    SyncStateTotals()
     RefreshText()
 end
 
@@ -940,27 +1190,40 @@ local function BeginKeystoneSegment(eventMapID)
     NotifyHistoryChanged()
 end
 
-local function IncrementSegment(segment, succeeded)
+local function IncrementSegment(segment, metricKey, succeeded)
     if not segment then return end
-    segment.attempts = segment.attempts + 1
-    if succeeded then segment.successes = segment.successes + 1 end
+    local metrics = EnsureOwnerMetrics(segment)
+    local counter = metrics[metricKey]
+    if not counter then return end
+    counter.attempts = counter.attempts + 1
+    if succeeded then counter.successes = counter.successes + 1 end
+    SyncOwnerTotals(segment)
 end
 
-local function RecordEmpower(succeeded)
+local function RecordEmpower(metricKey, succeeded)
+    if type(metricKey) == "boolean" then
+        succeeded = metricKey
+        metricKey = METRIC_DARKEST
+    end
     if not IsEligible() then return false end
+    if not MetricIsTracked(metricKey) then return false end
     if not state.combatSegment then BeginCombatSegment() end
     succeeded = succeeded == true
-    state.encounterAttempts = state.encounterAttempts + 1
-    state.sessionAttempts = state.sessionAttempts + 1
+    local encounterCounter = NormalizeMetricCounters(state.encounterMetrics)[metricKey]
+    local sessionCounter = NormalizeMetricCounters(state.sessionMetrics)[metricKey]
+    if not encounterCounter or not sessionCounter then return false end
+    encounterCounter.attempts = encounterCounter.attempts + 1
+    sessionCounter.attempts = sessionCounter.attempts + 1
     if succeeded then
-        state.encounterSuccesses = state.encounterSuccesses + 1
-        state.sessionSuccesses = state.sessionSuccesses + 1
-    else
+        encounterCounter.successes = encounterCounter.successes + 1
+        sessionCounter.successes = sessionCounter.successes + 1
+    elseif metricKey == METRIC_DARKEST then
         ShowTrainingFailure()
     end
-    IncrementSegment(state.combatSegment, succeeded)
-    IncrementSegment(state.encounterSegment, succeeded)
-    IncrementSegment(state.keystoneSegment, succeeded)
+    SyncStateTotals()
+    IncrementSegment(state.combatSegment, metricKey, succeeded)
+    IncrementSegment(state.encounterSegment, metricKey, succeeded)
+    IncrementSegment(state.keystoneSegment, metricKey, succeeded)
     SaveSessionState()
     RefreshText()
     return true
@@ -977,6 +1240,8 @@ end
 
 local function CaptureEviscerate(castGUID)
     state.pendingEviscerate = nil
+    if not MetricIsTracked(METRIC_DARKEST) then return false end
+    if RangeTrackingActive() then RunRangeScan() end
     RefreshRoleActivity()
     if not IsEligible()
         or not RoleIsActive(ROLE_DARKEST)
@@ -985,6 +1250,44 @@ local function CaptureEviscerate(castGUID)
     state.pendingEviscerate = {
         castGUID = PlainCastGUID(castGUID),
         inDance = RoleIsActive(ROLE_DANCE),
+    }
+    return true
+end
+
+local function HasChargedPowerPoint()
+    local getter = _G.GetUnitChargedPowerPoints
+    if type(getter) ~= "function" then return false end
+    local ok, result = pcall(function()
+        local indices = getter("player")
+        local canAccess = _G.canaccesstable
+        if indices == nil or IsSecret(indices) or type(indices) ~= "table"
+            or (type(canAccess) == "function" and canAccess(indices) == false) then return false end
+        for index = 1, #indices do
+            local point = indices[index]
+            if not IsSecret(point) and type(point) == "number" and point >= 1 then return true end
+        end
+        return false
+    end)
+    return ok and result == true
+end
+
+local function AoeMetricForSpell(spellID)
+    if IsBlackPowderSpellID(spellID) then return METRIC_BLACK_POWDER end
+    if IsSecretTechniqueSpellID(spellID) then return METRIC_SECRET_TECHNIQUE end
+end
+
+local function CaptureAoeFinisher(castGUID, spellID)
+    state.pendingAoeFinisher = nil
+    local metricKey = AoeMetricForSpell(spellID)
+    if not metricKey or not MetricIsTracked(metricKey) or not IsEligible() then return false end
+    if RangeTrackingActive() then RunRangeScan() end
+    if not AoeTargetRuleEligible() then return false end
+    if metricKey == METRIC_BLACK_POWDER and not HasChargedPowerPoint() then return false end
+    RefreshRoleActivity()
+    state.pendingAoeFinisher = {
+        metricKey = metricKey,
+        castGUID = PlainCastGUID(castGUID),
+        empowered = RoleIsActive(ROLE_ANCIENT),
     }
     return true
 end
@@ -999,6 +1302,12 @@ end
 local function OnEviscerateSent(unit, castGUID, spellID)
     if not IsPlayerUnit(unit) or not IsEviscerateSpellID(spellID) then return false end
     return CaptureEviscerate(castGUID)
+end
+
+local function OnPlayerSpellcastSent(unit, castGUID, spellID)
+    if not IsPlayerUnit(unit) then return false end
+    if IsEviscerateSpellID(spellID) then return CaptureEviscerate(castGUID) end
+    return CaptureAoeFinisher(castGUID, spellID)
 end
 
 local function OnEviscerateSucceeded(unit, castGUID, spellID)
@@ -1022,7 +1331,7 @@ local function OnEviscerateSucceeded(unit, castGUID, spellID)
         and now - state.lastDanceStartedAt <= DANCE_CAST_GRACE
     if pending.inDance == true or RoleIsActive(ROLE_DANCE) or danceJustStarted then
         state.recentPreDanceEviscerate = nil
-        return RecordEmpower(true)
+        return RecordEmpower(METRIC_DARKEST, true)
     end
 
     -- A normal empowered Eviscerate outside Shadow Dance is valid gameplay and
@@ -1032,6 +1341,20 @@ local function OnEviscerateSucceeded(unit, castGUID, spellID)
         state.recentPreDanceEviscerate = { usedAt = now }
     end
     return false
+end
+
+local function OnAoeFinisherSucceeded(unit, castGUID, spellID)
+    if not IsPlayerUnit(unit) then return false end
+    local metricKey = AoeMetricForSpell(spellID)
+    if not metricKey then
+        if IsSecret(spellID) then state.pendingAoeFinisher = nil end
+        return false
+    end
+    local pending = state.pendingAoeFinisher
+    state.pendingAoeFinisher = nil
+    if not pending or pending.metricKey ~= metricKey
+        or not PendingCastMatches(pending, castGUID) then return false end
+    return RecordEmpower(metricKey, pending.empowered == true)
 end
 
 local function OnEviscerateFailed(unit, castGUID, spellID)
@@ -1047,6 +1370,25 @@ local function OnEviscerateFailed(unit, castGUID, spellID)
     return false
 end
 
+local function OnAoeFinisherFailed(unit, castGUID, spellID)
+    if not IsPlayerUnit(unit) or not state.pendingAoeFinisher then return false end
+    if IsSecret(spellID) then
+        state.pendingAoeFinisher = nil
+        return false
+    end
+    local metricKey = AoeMetricForSpell(spellID)
+    if metricKey and state.pendingAoeFinisher.metricKey == metricKey
+        and PendingCastMatches(state.pendingAoeFinisher, castGUID) then
+        state.pendingAoeFinisher = nil
+    end
+    return false
+end
+
+local function OnPlayerSpellcastFailed(unit, castGUID, spellID)
+    OnAoeFinisherFailed(unit, castGUID, spellID)
+    return OnEviscerateFailed(unit, castGUID, spellID)
+end
+
 local function OnShadowDanceStarted()
     local now = MonotonicNow()
     state.lastDanceStartedAt = now
@@ -1055,12 +1397,15 @@ local function OnShadowDanceStarted()
     if now == nil or type(recent) ~= "table" or type(recent.usedAt) ~= "number" then return false end
     local elapsed = now - recent.usedAt
     if elapsed < 0 or elapsed > DANCE_LEAD_WINDOW then return false end
-    return RecordEmpower(false)
+    return RecordEmpower(METRIC_DARKEST, false)
 end
 
 local function OnPlayerSpellcastSucceeded(unit, castGUID, spellID)
     if not IsPlayerUnit(unit) then return false end
     if IsShadowDanceSpellID(spellID) then return OnShadowDanceStarted() end
+    if IsBlackPowderSpellID(spellID) or IsSecretTechniqueSpellID(spellID) then
+        return OnAoeFinisherSucceeded(unit, castGUID, spellID)
+    end
     return OnEviscerateSucceeded(unit, castGUID, spellID)
 end
 
@@ -1119,7 +1464,17 @@ local function RefreshRuntime()
 end
 
 function RAT:GetStats()
+    SyncStateTotals()
     return state.encounterSuccesses, state.encounterAttempts, state.sessionSuccesses, state.sessionAttempts
+end
+
+
+function RAT:GetMetricStats(metricKey)
+    if not MetricIsTracked(metricKey) then return 0, 0, 0, 0 end
+    local encounter = NormalizeMetricCounters(state.encounterMetrics)[metricKey]
+    local session = NormalizeMetricCounters(state.sessionMetrics)[metricKey]
+    if not encounter or not session then return 0, 0, 0, 0 end
+    return encounter.successes, encounter.attempts, session.successes, session.attempts
 end
 
 function RAT:GetCurrentSnapshot(rangeType)
@@ -1129,14 +1484,15 @@ function RAT:GetCurrentSnapshot(rangeType)
         if type(epoch) == "number" and type(state.clientStartedAt) == "number" then
             duration = math.max(0, math.floor(epoch - state.clientStartedAt + 0.5))
         end
-        return {
+        local snapshot = {
             type = "session",
             label = "Current Session",
-            successes = state.sessionSuccesses,
-            attempts = state.sessionAttempts,
+            metrics = CopyMetricCounters(state.sessionMetrics),
             duration = duration,
             current = true,
         }
+        SyncOwnerTotals(snapshot)
+        return snapshot
     end
 
     local segment = rangeType == "combat" and state.combatSegment
@@ -1196,6 +1552,7 @@ end
 function RAT:ResetSession()
     StartNewSession()
     state.pendingEviscerate = nil
+    state.pendingAoeFinisher = nil
     state.recentPreDanceEviscerate = nil
     state.lastDanceStartedAt = nil
     RefreshText()
@@ -1279,11 +1636,28 @@ local function InitializeDB()
         or RAT.db.outline == "MONOCHROME,OUTLINE"
     if not validOutline then RAT.db.outline = defaults.outline end
     if type(RAT.db.history) ~= "table" then RAT.db.history = {} end
+    for index = 1, #METRIC_DEFS do
+        local modeKey = METRIC_DEFS[index].modeKey
+        local mode = RAT.db[modeKey]
+        if mode ~= "show" and mode ~= "history" and mode ~= "off" then
+            RAT.db[modeKey] = defaults[modeKey]
+        end
+    end
+    if not VALID_STATS_LAYOUT[RAT.db.statsLayout] then
+        RAT.db.statsLayout = defaults.statsLayout
+    end
+    if not METRIC_ORDER_KEYS[RAT.db.metricOrder] then
+        RAT.db.metricOrder = defaults.metricOrder
+    end
     for index = 1, #RAT.db.history do
         local row = RAT.db.history[index]
         if type(row) == "table" and row.type ~= "combat"
             and row.type ~= "encounter" and row.type ~= "keystone" then
             row.type = row.label == "Combat" and "combat" or "encounter"
+        end
+        if type(row) == "table" then
+            EnsureOwnerMetrics(row)
+            SyncOwnerTotals(row)
         end
     end
     TrimHistory()
@@ -1335,13 +1709,13 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
     elseif not RAT.db then
         return
     elseif event == "UNIT_SPELLCAST_SENT" then
-        OnEviscerateSent(arg1, arg3, arg4)
+        OnPlayerSpellcastSent(arg1, arg3, arg4)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         OnPlayerSpellcastSucceeded(arg1, arg2, arg3)
     elseif event == "UNIT_SPELLCAST_FAILED"
         or event == "UNIT_SPELLCAST_FAILED_QUIET"
         or event == "UNIT_SPELLCAST_INTERRUPTED" then
-        OnEviscerateFailed(arg1, arg2, arg3)
+        OnPlayerSpellcastFailed(arg1, arg2, arg3)
     elseif event == "PLAYER_ENTERING_WORLD" then
         if not state.keystoneSegment and C_ChallengeMode
             and type(C_ChallengeMode.GetActiveChallengeMapID) == "function" then
@@ -1361,6 +1735,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
         state.pendingEviscerate = nil
+        state.pendingAoeFinisher = nil
         state.recentPreDanceEviscerate = nil
         state.lastDanceStartedAt = nil
         ArchiveSegment("combatSegment")
@@ -1385,6 +1760,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         end
     elseif event == "PLAYER_LOGOUT" then
         SaveSessionState()
+        state.pendingAoeFinisher = nil
         ApplyRangeTracking(true)
         ArchiveSegment("encounterSegment", { killed = false, abandoned = true })
         ArchiveSegment("combatSegment", { abandoned = true })
@@ -1416,6 +1792,10 @@ RAT._Test = {
     OnEviscerateSent = OnEviscerateSent,
     OnEviscerateSucceeded = OnEviscerateSucceeded,
     OnEviscerateFailed = OnEviscerateFailed,
+    CaptureAoeFinisher = CaptureAoeFinisher,
+    OnAoeFinisherSucceeded = OnAoeFinisherSucceeded,
+    OnPlayerSpellcastSent = OnPlayerSpellcastSent,
+    OnPlayerSpellcastFailed = OnPlayerSpellcastFailed,
     OnShadowDanceStarted = OnShadowDanceStarted,
     OnPlayerSpellcastSucceeded = OnPlayerSpellcastSucceeded,
     BeginCombatSegment = BeginCombatSegment,
@@ -1426,6 +1806,8 @@ RAT._Test = {
     RoleByFrame = roleByFrame,
     ActiveByFrame = activeByFrame,
     DarkestNightTargetRuleEligible = DarkestNightTargetRuleEligible,
+    AoeTargetRuleEligible = AoeTargetRuleEligible,
+    HasChargedPowerPoint = HasChargedPowerPoint,
     ShowTrainingFailure = ShowTrainingFailure,
     RestoreSessionState = RestoreSessionState,
     SaveSessionState = SaveSessionState,

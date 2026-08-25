@@ -399,6 +399,33 @@ local function ConfigureMediaDropdown(initializer, setting)
     initializer.OnHide = HideMediaPreview
 end
 
+local function ApexMetricModes()
+    return {
+        { value = "show", label = "Track and show" },
+        { value = "history", label = "Track in history only" },
+        { value = "off", label = "Disabled" },
+    }
+end
+
+local function StatisticsLayouts()
+    return {
+        { value = "compact", label = "Compact - ranges side by side" },
+        { value = "rangeRows", label = "One time range per row" },
+        { value = "metricRows", label = "One APEX type per row" },
+    }
+end
+
+local function ApexMetricOrders()
+    return {
+        { value = "darkestNight,blackPowder,secretTechnique", label = "Darkest Night - Black Powder - Secret Technique" },
+        { value = "darkestNight,secretTechnique,blackPowder", label = "Darkest Night - Secret Technique - Black Powder" },
+        { value = "blackPowder,darkestNight,secretTechnique", label = "Black Powder - Darkest Night - Secret Technique" },
+        { value = "blackPowder,secretTechnique,darkestNight", label = "Black Powder - Secret Technique - Darkest Night" },
+        { value = "secretTechnique,darkestNight,blackPowder", label = "Secret Technique - Darkest Night - Black Powder" },
+        { value = "secretTechnique,blackPowder,darkestNight", label = "Secret Technique - Black Powder - Darkest Night" },
+    }
+end
+
 local function FetchMedia(mediaType, name, fallback)
     local value = LSM and type(LSM.Fetch) == "function" and LSM:Fetch(mediaType, name, true) or nil
     return type(value) == "string" and value ~= "" and value or fallback
@@ -466,7 +493,7 @@ function RAT:BuildOptions()
     AddHeader(layout, "Tracker", "Core display controls.")
     local _, enabledInitializer = AddCheckbox(
         category, "RAT_ENABLED", "enabled", "Enable tracker", defaults.enabled,
-        "Show the Darkest Night empowerment statistics tracker.")
+        "Show the Subtlety Deathstalker APEX statistics tracker.")
     AddCheckbox(category, "RAT_LOCKED", "locked", "Lock position", defaults.locked,
         "Disable this to drag the tracker directly in the game world.", nil, enabledInitializer)
     AddCheckbox(category, "RAT_BELOW_FOUR_TARGETS", "onlyCountBelowFourTargets",
@@ -474,14 +501,37 @@ function RAT:BuildOptions()
         "Use this addon's own Eviscerate nameplate-range counter. Only 1-3 in-range targets count as a Darkest Night APEX use; unknown snapshots and 4+ targets fail closed.",
         nil, enabledInitializer)
 
+    AddHeader(layout, "APEX statistics",
+        "Choose independently whether each APEX type appears on the movable tracker, is stored only in history, or is disabled.")
+    AddDropdown(category, "RAT_DARKEST_NIGHT_MODE", "darkestNightMode",
+        "Darkest Night APEX", defaults.darkestNightMode, ApexMetricModes,
+        "Ancient Arts empowered Darkest Night Eviscerates and their Shadow Dance timing.",
+        nil, enabledInitializer)
+    AddDropdown(category, "RAT_BLACK_POWDER_MODE", "blackPowderMode",
+        "Empowered Black Powder", defaults.blackPowderMode, ApexMetricModes,
+        "Black Powder casts at four or more in-range targets with a Supercharged combo point; Ancient Arts decides success.",
+        nil, enabledInitializer)
+    AddDropdown(category, "RAT_SECRET_TECHNIQUE_MODE", "secretTechniqueMode",
+        "Empowered Secret Technique", defaults.secretTechniqueMode, ApexMetricModes,
+        "Secret Technique casts at four or more in-range targets; Ancient Arts decides success.",
+        nil, enabledInitializer)
+
     AddHeader(layout, "Display")
     AddCheckbox(category, "RAT_SHOW_HEADER", "showHeader", "Show header", defaults.showHeader,
-        "Show the Darkest Night empowerment title.", nil, enabledInitializer)
+        "Show the compact APEX empowerment title.", nil, enabledInitializer)
     local _, backgroundInitializer = AddCheckbox(
         category, "RAT_SHOW_BACKGROUND", "showBackground", "Show background", defaults.showBackground,
         "Draw a background behind the tracker.", nil, enabledInitializer)
     AddSlider(category, "RAT_SCALE", "scale", "Scale", defaults.scale, 0.5, 2, 0.05,
         "Scale the complete tracker.", function(value) return string.format("%.2f", value) end,
+        nil, enabledInitializer)
+    AddDropdown(category, "RAT_STATS_LAYOUT", "statsLayout", "Statistics layout",
+        defaults.statsLayout, StatisticsLayouts,
+        "Arrange enabled time ranges compactly, on separate rows, or grouped by APEX type.",
+        nil, enabledInitializer)
+    AddDropdown(category, "RAT_METRIC_ORDER", "metricOrder", "APEX order",
+        defaults.metricOrder, ApexMetricOrders,
+        "Choose the left-to-right or top-to-bottom order of the enabled APEX statistics.",
         nil, enabledInitializer)
 
     AddHeader(layout, "Typography")
@@ -505,7 +555,7 @@ function RAT:BuildOptions()
     AddSlider(category, "RAT_HEADER_SIZE", "headerSize", "Header size", defaults.headerSize,
         9, 40, 1, "Header font size.", nil, nil, enabledInitializer)
     AddSlider(category, "RAT_STATS_SIZE", "statsSize", "Statistics size", defaults.statsSize,
-        10, 48, 1, "Encounter and session statistics font size.", nil, nil, enabledInitializer)
+        10, 48, 1, "APEX statistics font size.", nil, nil, enabledInitializer)
 
     AddHeader(layout, "Colors and background")
     AddColor(category, "RAT_HEADER_COLOR", "headerColor", "Header color", defaults.headerColor,
@@ -604,7 +654,7 @@ function RAT:BuildOptions()
         1, 100, 1, "Maximum entries retained separately for combats, encounters, and keystones.", nil, nil, enabledInitializer)
     AddCheckbox(category, "RAT_HISTORY_ATTEMPTS", "historyOnlyWithAttempts",
         "Only store fights with APEX uses", defaults.historyOnlyWithAttempts,
-        "Ignore fights where no Ancient Arts empowered Darkest Night Eviscerate was recorded.", nil, enabledInitializer)
+        "Ignore fights where none of the enabled APEX statistics recorded an attempt.", nil, enabledInitializer)
     AddButton(layout, "Statistics browser", "Open statistics", function() RAT:OpenHistory() end,
         "Inspect right-now Combat, Encounter, Dungeon, and Session totals plus archived history snapshots.")
     AddButton(layout, "Current session", "Reset statistics", function() RAT:ResetSession() end,
