@@ -563,10 +563,10 @@ function RAT:BuildOptions()
         defaults.showLastDungeon, "Show the latest completed or exited keystone dungeon snapshot on the tracker.",
         nil, enabledInitializer)
 
-    AddHeader(layout, "Training mode", "Immediate feedback when a confirmed Darkest Night empowerment happens outside Shadow Dance.")
+    AddHeader(layout, "Training mode", "Immediate feedback when an Ancient Arts empowered Darkest Night Eviscerate is cast outside Shadow Dance.")
     local _, trainingInitializer = AddCheckbox(
         category, "RAT_TRAINING_MODE", "trainingMode", "Enable training mode", defaults.trainingMode,
-        "Show a separate warning immediately when Ancient Arts confirms an APEX Darkest Night use outside the real Shadow Dance buff.",
+        "Show a separate warning after an Ancient Arts empowered Darkest Night Eviscerate succeeds outside the real Shadow Dance buff.",
         nil, enabledInitializer)
     AddCheckbox(category, "RAT_TRAINING_LOCKED", "trainingLocked",
         "Lock training alert position", defaults.trainingLocked,
@@ -604,7 +604,7 @@ function RAT:BuildOptions()
         1, 100, 1, "Maximum entries retained separately for combats, encounters, and keystones.", nil, nil, enabledInitializer)
     AddCheckbox(category, "RAT_HISTORY_ATTEMPTS", "historyOnlyWithAttempts",
         "Only store fights with APEX uses", defaults.historyOnlyWithAttempts,
-        "Ignore fights where no Ancient Arts empowerment was recorded.", nil, enabledInitializer)
+        "Ignore fights where no Ancient Arts empowered Darkest Night Eviscerate was recorded.", nil, enabledInitializer)
     AddButton(layout, "Statistics browser", "Open statistics", function() RAT:OpenHistory() end,
         "Inspect right-now Combat, Encounter, Dungeon, and Session totals plus archived history snapshots.")
     AddButton(layout, "Current session", "Reset statistics", function() RAT:ResetSession() end,

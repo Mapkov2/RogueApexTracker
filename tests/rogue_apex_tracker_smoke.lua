@@ -266,7 +266,12 @@ UnitIsDeadOrGhost = function(unit)
     local row = nameplateState[unit]
     return row and row.dead == true or false
 end
-C_SpellBook = { IsSpellKnown = function(spellID) return spellID == 457058 end }
+C_SpellBook = {
+    IsSpellKnown = function(spellID) return spellID == 457058 end,
+    FindBaseSpellByID = function(spellID)
+        return spellID == 999819 and 196819 or spellID
+    end,
+}
 local activeChallengeMapID
 local activeKeystoneLevel = 12
 local challengeCompletionInfo = { level = 12, onTime = true, keystoneUpgradeLevels = 2 }
@@ -605,7 +610,28 @@ Expect(display.shown == true, "eligible Subtlety Deathstalker did not show the t
 Expect(display.fonts[2].text == "COMBAT 0/0  0.0%   SESSION 0/0  0.0%",
     "initial live statistics text drifted")
 Expect(eventFrame.events.UNIT_AURA == nil, "tracker registered direct UNIT_AURA traffic")
+Expect(eventFrame.events.UNIT_SPELLCAST_SENT == "player"
+    and eventFrame.events.UNIT_SPELLCAST_SUCCEEDED == "player",
+    "tracker did not register player-only Eviscerate lifecycle events")
 Expect(eventFrame.OnUpdate == nil, "tracker installed an OnUpdate poll")
+
+local castSerial = 0
+local function TriggerEviscerate(terminalEvent)
+    castSerial = castSerial + 1
+    local castGUID = "Cast-3-0-0-0-196819-" .. castSerial
+    eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SENT",
+        "player", "Target", castGUID, 196819)
+    eventFrame.OnEvent(eventFrame, terminalEvent or "UNIT_SPELLCAST_SUCCEEDED",
+        "player", castGUID, 196819)
+end
+
+eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SENT",
+    "player", "Target", "Secret-Cast", { secret = true })
+eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SUCCEEDED",
+    "player", "Secret-Cast", { secret = true })
+local secretES, secretEA, secretSS, secretSA = RAT:GetStats()
+Expect(secretES == 0 and secretEA == 0 and secretSS == 0 and secretSA == 0,
+    "secret spellcast payload was inspected or counted instead of failing closed")
 
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_DISABLED")
 darkest:SetActive(true)
@@ -615,11 +641,12 @@ Expect(es == 0 and ea == 0 and ss == 0 and sa == 0, "Darkest Night alone counted
 SetInRangeCount(4)
 rangeEventFrame:OnEvent("PLAYER_REGEN_ENABLED")
 ancient:SetActive(true)
+TriggerEviscerate()
 es, ea, ss, sa = RAT:GetStats()
 Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
-    "a four-target Darkest Night empowerment was counted")
+    "a four-target empowered Darkest Night Eviscerate was counted")
 Expect(RAT:IsTrainingAlertActive() == false,
-    "excluded four-target empowerment raised a Darkest Night training failure")
+    "excluded four-target Eviscerate raised a Darkest Night training failure")
 ancient:SetActive(false)
 darkest:SetActive(false)
 darkest:SetActive(true)
@@ -627,8 +654,16 @@ SetInRangeCount(3)
 rangeEventFrame:OnEvent("PLAYER_REGEN_ENABLED")
 ancient:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
+Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
+    "preparing Ancient Arts before Shadow Dance prematurely counted an attempt")
+TriggerEviscerate("UNIT_SPELLCAST_FAILED")
+es, ea, ss, sa = RAT:GetStats()
+Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
+    "a failed empowered Darkest Night Eviscerate counted an attempt")
+TriggerEviscerate()
+es, ea, ss, sa = RAT:GetStats()
 Expect(es == 0 and ea == 1 and ss == 0 and sa == 1,
-    "Ancient Arts after Darkest Night did not count the three-target out-of-Dance miss")
+    "the successful three-target Eviscerate did not count the out-of-Dance miss")
 local liveCombat = RAT:GetCurrentSnapshot("combat")
 Expect(liveCombat and liveCombat.successes == 0 and liveCombat.attempts == 1,
     "current-combat snapshot did not expose the live APEX result")
@@ -652,8 +687,12 @@ es, ea, ss, sa = RAT:GetStats()
 Expect(ea == 1 and sa == 1, "a new Darkest Night counted before Ancient Arts appeared")
 ancient:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
+Expect(es == 0 and ea == 1 and ss == 0 and sa == 1,
+    "Ancient Arts activation inside Dance counted before Eviscerate succeeded")
+TriggerEviscerate()
+es, ea, ss, sa = RAT:GetStats()
 Expect(es == 1 and ea == 2 and ss == 1 and sa == 2,
-    "real Shadow Dance did not convert the confirmed APEX IT use into a success")
+    "real Shadow Dance did not convert the confirmed Eviscerate into a success")
 Expect(RAT:IsTrainingAlertActive() == false,
     "successful in-Dance APEX use incorrectly raised the training failure")
 eventFrame.OnEvent(eventFrame, "PLAYER_LOGIN")
@@ -680,6 +719,7 @@ ancient:SetActive(false)
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_DISABLED")
 darkest:SetActive(true)
 ancient:SetActive(true)
+TriggerEviscerate()
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_ENABLED")
 es, ea, ss, sa = RAT:GetStats()
 Expect(es == 1 and ea == 1 and ss == 2 and sa == 3,
@@ -699,6 +739,7 @@ local function TriggerApexUse(inDance)
     dance:SetActive(inDance == true)
     darkest:SetActive(true)
     ancient:SetActive(true)
+    TriggerEviscerate()
 end
 
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_DISABLED")

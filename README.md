@@ -1,14 +1,16 @@
 # Rogue Apex Tracker
 
 Rogue Apex Tracker is a small standalone World of Warcraft Retail addon for
-Subtlety Deathstalker rogues. It measures whether an Ancient Arts empowerment
-after Darkest Night happened inside a real Shadow Dance.
+Subtlety Deathstalker rogues. It measures whether an Ancient Arts empowered
+Darkest Night Eviscerate was cast inside a real Shadow Dance.
 
-The tracker records an attempt only when Ancient Arts becomes active after
-Darkest Night. The attempt is successful only while the actual Shadow Dance
-buff is active. It displays encounter and session totals, success percentages,
-and stores separate history snapshots for combats, boss encounters, and
-keystone dungeons.
+The tracker snapshots Darkest Night and Ancient Arts when Eviscerate is sent,
+then records the attempt only after that cast succeeds. The attempt is
+successful while the actual Shadow Dance buff is active at cast time. Ancient
+Arts may therefore be prepared before Shadow Dance and held for the valid
+Darkest Night Eviscerate. It displays encounter and session totals, success
+percentages, and stores separate history snapshots for combats, boss
+encounters, and keystone dungeons.
 
 Rogue Apex Tracker does not require MidnightSimpleUnitFrames or another
 framework. It uses Blizzard Cooldown Manager item state for the tracked buffs
@@ -19,8 +21,8 @@ seconds while that rule is enabled. Unknown range snapshots fail closed.
 ## Features
 
 - Subtlety Deathstalker eligibility gate
-- Darkest Night to Ancient Arts attempt detection
-- Real Shadow Dance success detection
+- Confirmed Ancient Arts empowered Darkest Night Eviscerate detection
+- Real Shadow Dance state at Eviscerate cast time
 - Optional immediate training warning for confirmed out-of-Dance APEX uses
 - Independently movable and configurable training alert
 - Optional strict 1-3 in-range target rule
@@ -74,9 +76,10 @@ count. Disable the option if you do not want nameplate range sampling.
 ## Training mode
 
 Enable **Training mode** to receive an immediate `APEX MISSED - OUTSIDE SHADOW
-DANCE` warning whenever Ancient Arts confirms a Darkest Night empowerment while
-the real Shadow Dance buff is not active. The warning follows the same optional
-one-to-three-target rule as the statistics tracker.
+DANCE` warning after an Ancient Arts empowered Darkest Night Eviscerate
+succeeds while the real Shadow Dance buff is not active. Preparing Ancient Arts
+before Shadow Dance does not count as a miss. The warning follows the same
+optional one-to-three-target rule as the statistics tracker.
 
 The alert has its own lock, drag position, offsets, scale, text size, color,
 duration, reset, and preview. Unlocking it keeps a placement label visible so it

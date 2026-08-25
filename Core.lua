@@ -65,7 +65,7 @@ local state = {
     encounterSuccesses = 0,
     sessionAttempts = 0,
     sessionSuccesses = 0,
-    empowerCounted = false,
+    pendingEviscerate = nil,
     preview = false,
     combatSegment = nil,
     encounterSegment = nil,
@@ -392,8 +392,23 @@ local function RoleIsActive(role)
     return false
 end
 
+local function RefreshRoleActivity()
+    for frame in pairs(roleByFrame) do
+        activeByFrame[frame] = SafeActive(frame)
+    end
+end
+
 local function PlainSpellMatch(value, expected)
     return not IsSecret(value) and type(value) == "number" and value == expected
+end
+
+local function IsEviscerateSpellID(spellID)
+    if IsSecret(spellID) or type(spellID) ~= "number" then return false end
+    if spellID == EVISCERATE_RANGE_SPELL_ID then return true end
+    local findBase = C_SpellBook and C_SpellBook.FindBaseSpellByID
+    if type(findBase) ~= "function" then return false end
+    local ok, baseSpellID = pcall(findBase, spellID)
+    return ok and PlainSpellMatch(baseSpellID, EVISCERATE_RANGE_SPELL_ID)
 end
 
 local function CooldownInfoContainsSpell(info, spellID)
@@ -852,7 +867,7 @@ end
 local function ResetLiveRange()
     state.encounterAttempts = 0
     state.encounterSuccesses = 0
-    state.empowerCounted = false
+    state.pendingEviscerate = nil
     RefreshText()
 end
 
@@ -904,29 +919,16 @@ local function BeginKeystoneSegment(eventMapID)
     NotifyHistoryChanged()
 end
 
-local function UpdateCycleBaseline()
-    if not IsEligible() or not RoleIsActive(ROLE_DARKEST) then
-        state.empowerCounted = false
-        return
-    end
-    if RoleIsActive(ROLE_ANCIENT) then state.empowerCounted = true end
-end
-
 local function IncrementSegment(segment, succeeded)
     if not segment then return end
     segment.attempts = segment.attempts + 1
     if succeeded then segment.successes = segment.successes + 1 end
 end
 
-local function RecordEmpower()
-    if not IsEligible()
-        or state.empowerCounted == true
-        or not RoleIsActive(ROLE_DARKEST)
-        or not RoleIsActive(ROLE_ANCIENT)
-        or not DarkestNightTargetRuleEligible() then return false end
+local function RecordEmpower(succeeded)
+    if not IsEligible() then return false end
     if not state.combatSegment then BeginCombatSegment() end
-    state.empowerCounted = true
-    local succeeded = RoleIsActive(ROLE_DANCE)
+    succeeded = succeeded == true
     state.encounterAttempts = state.encounterAttempts + 1
     state.sessionAttempts = state.sessionAttempts + 1
     if succeeded then
@@ -943,12 +945,75 @@ local function RecordEmpower()
     return true
 end
 
+local function PlainCastGUID(castGUID)
+    if IsSecret(castGUID) or type(castGUID) ~= "string" then return nil end
+    return castGUID
+end
+
+local function IsPlayerUnit(unit)
+    return not IsSecret(unit) and type(unit) == "string" and unit == "player"
+end
+
+local function CaptureEviscerate(castGUID)
+    state.pendingEviscerate = nil
+    RefreshRoleActivity()
+    if not IsEligible()
+        or not RoleIsActive(ROLE_DARKEST)
+        or not RoleIsActive(ROLE_ANCIENT)
+        or not DarkestNightTargetRuleEligible() then return false end
+    state.pendingEviscerate = {
+        castGUID = PlainCastGUID(castGUID),
+        inDance = RoleIsActive(ROLE_DANCE),
+    }
+    return true
+end
+
+local function PendingCastMatches(pending, castGUID)
+    if not pending then return false end
+    if pending.castGUID == nil then return true end
+    local plainCastGUID = PlainCastGUID(castGUID)
+    return plainCastGUID ~= nil and plainCastGUID == pending.castGUID
+end
+
+local function OnEviscerateSent(unit, castGUID, spellID)
+    if not IsPlayerUnit(unit) or not IsEviscerateSpellID(spellID) then return false end
+    return CaptureEviscerate(castGUID)
+end
+
+local function OnEviscerateSucceeded(unit, castGUID, spellID)
+    if not IsPlayerUnit(unit) then return false end
+    if not IsEviscerateSpellID(spellID) then
+        if IsSecret(spellID) then state.pendingEviscerate = nil end
+        return false
+    end
+    local pending = state.pendingEviscerate
+    if not pending then
+        CaptureEviscerate(castGUID)
+        pending = state.pendingEviscerate
+    end
+    state.pendingEviscerate = nil
+    if not PendingCastMatches(pending, castGUID) then return false end
+    RefreshRoleActivity()
+    return RecordEmpower(pending.inDance == true or RoleIsActive(ROLE_DANCE))
+end
+
+local function OnEviscerateFailed(unit, castGUID, spellID)
+    if not IsPlayerUnit(unit) or not state.pendingEviscerate then return false end
+    if IsSecret(spellID) then
+        state.pendingEviscerate = nil
+        return false
+    end
+    if IsEviscerateSpellID(spellID)
+        and PendingCastMatches(state.pendingEviscerate, castGUID) then
+        state.pendingEviscerate = nil
+    end
+    return false
+end
+
 local function OnItemActiveStateChanged(frame)
     local role = roleByFrame[frame]
     if not role then return end
     activeByFrame[frame] = SafeActive(frame)
-    if role == ROLE_ANCIENT and activeByFrame[frame] == true then RecordEmpower() end
-    UpdateCycleBaseline()
 end
 
 function RAT:RefreshDrivers()
@@ -987,7 +1052,6 @@ function RAT:RefreshDrivers()
         end
     end
     refreshBusy = false
-    UpdateCycleBaseline()
 end
 
 local function RefreshRuntime()
@@ -1074,7 +1138,7 @@ end
 
 function RAT:ResetSession()
     StartNewSession()
-    state.empowerCounted = RoleIsActive(ROLE_DARKEST)
+    state.pendingEviscerate = nil
     RefreshText()
 end
 
@@ -1181,6 +1245,11 @@ eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("COOLDOWN_VIEWER_DATA_LOADED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SENT", "player")
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", "player")
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_FAILED_QUIET", "player")
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player")
 eventFrame:RegisterEvent("ENCOUNTER_START")
 eventFrame:RegisterEvent("ENCOUNTER_END")
 eventFrame:RegisterEvent("CHALLENGE_MODE_START")
@@ -1188,7 +1257,7 @@ eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
 eventFrame:RegisterEvent("PLAYER_LEAVING_WORLD")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function(_, event, ...)
-    local arg1, arg2, arg3, _, arg5 = ...
+    local arg1, arg2, arg3, arg4, arg5 = ...
     if event == "ADDON_LOADED" then
         if arg1 == addonName then
             InitializeDB()
@@ -1206,6 +1275,14 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         end
     elseif not RAT.db then
         return
+    elseif event == "UNIT_SPELLCAST_SENT" then
+        OnEviscerateSent(arg1, arg3, arg4)
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+        OnEviscerateSucceeded(arg1, arg2, arg3)
+    elseif event == "UNIT_SPELLCAST_FAILED"
+        or event == "UNIT_SPELLCAST_FAILED_QUIET"
+        or event == "UNIT_SPELLCAST_INTERRUPTED" then
+        OnEviscerateFailed(arg1, arg2, arg3)
     elseif event == "PLAYER_ENTERING_WORLD" then
         if not state.keystoneSegment and C_ChallengeMode
             and type(C_ChallengeMode.GetActiveChallengeMapID) == "function" then
@@ -1273,7 +1350,10 @@ end
 RAT._Test = {
     State = state,
     RecordEmpower = RecordEmpower,
-    UpdateCycleBaseline = UpdateCycleBaseline,
+    CaptureEviscerate = CaptureEviscerate,
+    OnEviscerateSent = OnEviscerateSent,
+    OnEviscerateSucceeded = OnEviscerateSucceeded,
+    OnEviscerateFailed = OnEviscerateFailed,
     BeginCombatSegment = BeginCombatSegment,
     BeginEncounterSegment = BeginEncounterSegment,
     BeginKeystoneSegment = BeginKeystoneSegment,

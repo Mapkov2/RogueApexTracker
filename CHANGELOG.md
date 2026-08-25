@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.3 - 2026-08-25
+
+- Records an APEX attempt only after the matching Darkest Night Eviscerate
+  succeeds, using its pre-cast Darkest Night, Ancient Arts, target-count, and
+  real Shadow Dance snapshot.
+- Allows Ancient Arts to be prepared before Shadow Dance without prematurely
+  counting a failure and discards failed or interrupted Eviscerate casts.
+
 ## 1.3.2 - 2026-08-25
 
 - Attaches each options separator directly to its section header so every
