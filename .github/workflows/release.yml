@@ -146,7 +146,7 @@ jobs:
           fi
 
           interface="$(sed -n 's/^## Interface:[[:space:]]*//p' RogueApexTracker.toc \
-            | tr ',' '\n' | tr -d '[:space:]\r' | sort -nr | head -n 1)"
+            | tr ',' '\n' | tr -d ' \t\r' | sort -nr | head -n 1)"
           if [[ ! "$interface" =~ ^[0-9]{6}$ ]]; then
             echo "Invalid Retail Interface value: $interface" >&2
             exit 1
