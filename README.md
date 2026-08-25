@@ -5,12 +5,13 @@ Subtlety Deathstalker rogues. It measures whether an Ancient Arts empowered
 Darkest Night Eviscerate was cast inside a real Shadow Dance.
 
 The tracker snapshots Darkest Night and Ancient Arts when Eviscerate is sent,
-then records the attempt only after that cast succeeds. The attempt is
-successful while the actual Shadow Dance buff is active at cast time. Ancient
-Arts may therefore be prepared before Shadow Dance and held for the valid
-Darkest Night Eviscerate. It displays encounter and session totals, success
-percentages, and stores separate history snapshots for combats, boss
-encounters, and keystone dungeons.
+then records an in-Dance success only after that cast succeeds. Ancient Arts
+may be prepared before Shadow Dance and held for the valid Darkest Night
+Eviscerate. Normal empowered Eviscerates outside Dance are ignored. A miss is
+recorded only when Shadow Dance actually starts within three seconds after APEX
+was spent. It displays encounter and session totals, success percentages, and
+stores separate history snapshots for combats, boss encounters, and keystone
+dungeons.
 
 Rogue Apex Tracker does not require MidnightSimpleUnitFrames or another
 framework. It uses Blizzard Cooldown Manager item state for the tracked buffs
@@ -23,7 +24,7 @@ seconds while that rule is enabled. Unknown range snapshots fail closed.
 - Subtlety Deathstalker eligibility gate
 - Confirmed Ancient Arts empowered Darkest Night Eviscerate detection
 - Real Shadow Dance state at Eviscerate cast time
-- Optional immediate training warning for confirmed out-of-Dance APEX uses
+- Optional training warning for APEX spent within three seconds before Dance
 - Independently movable and configurable training alert
 - Optional strict 1-3 in-range target rule
 - Encounter and reload-safe session statistics
@@ -75,11 +76,13 @@ count. Disable the option if you do not want nameplate range sampling.
 
 ## Training mode
 
-Enable **Training mode** to receive an immediate `APEX MISSED - OUTSIDE SHADOW
-DANCE` warning after an Ancient Arts empowered Darkest Night Eviscerate
-succeeds while the real Shadow Dance buff is not active. Preparing Ancient Arts
-before Shadow Dance does not count as a miss. The warning follows the same
-optional one-to-three-target rule as the statistics tracker.
+Enable **Training mode** to receive an `APEX MISSED - BEFORE SHADOW DANCE`
+warning when Shadow Dance actually starts within three seconds after an Ancient
+Arts empowered Darkest Night Eviscerate was spent. A normal empowered Eviscerate
+outside Dance is ignored when no Dance follows in that window. Preparing
+Ancient Arts before Shadow Dance does not count as a miss; using the held APEX
+inside the real Dance counts as a success. The warning follows the same optional
+one-to-three-target rule as the statistics tracker.
 
 The alert has its own lock, drag position, offsets, scale, text size, color,
 duration, reset, and preview. Unlocking it keeps a placement label visible so it

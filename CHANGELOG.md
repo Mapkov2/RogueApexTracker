@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.4 - 2026-08-25
+
+- Ignores normal Ancient Arts empowered Darkest Night Eviscerates outside
+  Shadow Dance instead of treating them as failed attempts.
+- Counts a miss only when Shadow Dance actually starts within three seconds
+  after APEX was spent; successful uses still require the real active Dance.
+
 ## 1.3.3 - 2026-08-25
 
 - Records an APEX attempt only after the matching Darkest Night Eviscerate

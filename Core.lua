@@ -7,8 +7,11 @@ local DARKEST_NIGHT_TALENT_ID = 457058
 local DARKEST_NIGHT_AURA_ID = 457280
 local ANCIENT_ARTS_AURA_ID = 1269163
 local SHADOW_DANCE_AURA_ID = 185422
+local SHADOW_DANCE_SPELL_ID = 185313
 local SUBTLETY_SPEC_ID = 261
 local EVISCERATE_RANGE_SPELL_ID = 196819
+local DANCE_LEAD_WINDOW = 3
+local DANCE_CAST_GRACE = 0.50
 local RANGE_SCAN_INTERVAL = 0.20
 local ROLE_DARKEST = "darkestNight"
 local ROLE_ANCIENT = "ancientArts"
@@ -66,6 +69,8 @@ local state = {
     sessionAttempts = 0,
     sessionSuccesses = 0,
     pendingEviscerate = nil,
+    recentPreDanceEviscerate = nil,
+    lastDanceStartedAt = nil,
     preview = false,
     combatSegment = nil,
     encounterSegment = nil,
@@ -127,6 +132,12 @@ local function EpochNow()
     if type(getter) ~= "function" then return nil end
     local ok, value = pcall(getter)
     if ok and type(value) == "number" then return value end
+end
+
+local function MonotonicNow()
+    if type(GetTime) ~= "function" then return nil end
+    local ok, value = pcall(GetTime)
+    if ok and type(value) == "number" and not IsSecret(value) then return value end
 end
 
 local function ClientStartedAt()
@@ -402,13 +413,21 @@ local function PlainSpellMatch(value, expected)
     return not IsSecret(value) and type(value) == "number" and value == expected
 end
 
-local function IsEviscerateSpellID(spellID)
+local function IsSpellOrBaseSpellID(spellID, expectedSpellID)
     if IsSecret(spellID) or type(spellID) ~= "number" then return false end
-    if spellID == EVISCERATE_RANGE_SPELL_ID then return true end
+    if spellID == expectedSpellID then return true end
     local findBase = C_SpellBook and C_SpellBook.FindBaseSpellByID
     if type(findBase) ~= "function" then return false end
     local ok, baseSpellID = pcall(findBase, spellID)
-    return ok and PlainSpellMatch(baseSpellID, EVISCERATE_RANGE_SPELL_ID)
+    return ok and PlainSpellMatch(baseSpellID, expectedSpellID)
+end
+
+local function IsEviscerateSpellID(spellID)
+    return IsSpellOrBaseSpellID(spellID, EVISCERATE_RANGE_SPELL_ID)
+end
+
+local function IsShadowDanceSpellID(spellID)
+    return IsSpellOrBaseSpellID(spellID, SHADOW_DANCE_SPELL_ID)
 end
 
 local function CooldownInfoContainsSpell(info, spellID)
@@ -613,7 +632,7 @@ local function EnsureTrainingDisplay()
         trainingDisplay._ratTrainingText = trainingText
         trainingText:SetPoint("CENTER", trainingDisplay, "CENTER", 0, 0)
         trainingText:SetFont(FALLBACK_FONT, defaults.trainingSize, defaults.outline)
-        trainingText:SetText("APEX MISSED - OUTSIDE SHADOW DANCE")
+        trainingText:SetText("APEX MISSED - BEFORE SHADOW DANCE")
     end
 
     trainingMoverText = trainingMoverText or trainingDisplay._ratTrainingMoverText
@@ -653,7 +672,7 @@ local function ApplyTrainingSettings()
     frame:EnableMouse(unlocked)
     trainingMoverText:SetShown(unlocked)
     trainingText:SetText(state.trainingAlertActive
-        and "APEX MISSED - OUTSIDE SHADOW DANCE" or "APEX TRAINING")
+        and "APEX MISSED - BEFORE SHADOW DANCE" or "APEX TRAINING")
     ApplyFont(trainingText, Clamp(RAT.db.trainingSize, 12, 64))
     local color = RAT.db.trainingColor or defaults.trainingColor
     trainingText:SetTextColor(color[1] or 1, color[2] or 0.18, color[3] or 0.08, color[4] or 1)
@@ -868,6 +887,8 @@ local function ResetLiveRange()
     state.encounterAttempts = 0
     state.encounterSuccesses = 0
     state.pendingEviscerate = nil
+    state.recentPreDanceEviscerate = nil
+    state.lastDanceStartedAt = nil
     RefreshText()
 end
 
@@ -994,7 +1015,23 @@ local function OnEviscerateSucceeded(unit, castGUID, spellID)
     state.pendingEviscerate = nil
     if not PendingCastMatches(pending, castGUID) then return false end
     RefreshRoleActivity()
-    return RecordEmpower(pending.inDance == true or RoleIsActive(ROLE_DANCE))
+    local now = MonotonicNow()
+    local danceJustStarted = now ~= nil
+        and state.lastDanceStartedAt ~= nil
+        and now >= state.lastDanceStartedAt
+        and now - state.lastDanceStartedAt <= DANCE_CAST_GRACE
+    if pending.inDance == true or RoleIsActive(ROLE_DANCE) or danceJustStarted then
+        state.recentPreDanceEviscerate = nil
+        return RecordEmpower(true)
+    end
+
+    -- A normal empowered Eviscerate outside Shadow Dance is valid gameplay and
+    -- is not part of this statistic. Keep it only long enough to determine
+    -- whether Shadow Dance actually starts immediately afterwards.
+    if now ~= nil then
+        state.recentPreDanceEviscerate = { usedAt = now }
+    end
+    return false
 end
 
 local function OnEviscerateFailed(unit, castGUID, spellID)
@@ -1010,10 +1047,30 @@ local function OnEviscerateFailed(unit, castGUID, spellID)
     return false
 end
 
+local function OnShadowDanceStarted()
+    local now = MonotonicNow()
+    state.lastDanceStartedAt = now
+    local recent = state.recentPreDanceEviscerate
+    state.recentPreDanceEviscerate = nil
+    if now == nil or type(recent) ~= "table" or type(recent.usedAt) ~= "number" then return false end
+    local elapsed = now - recent.usedAt
+    if elapsed < 0 or elapsed > DANCE_LEAD_WINDOW then return false end
+    return RecordEmpower(false)
+end
+
+local function OnPlayerSpellcastSucceeded(unit, castGUID, spellID)
+    if not IsPlayerUnit(unit) then return false end
+    if IsShadowDanceSpellID(spellID) then return OnShadowDanceStarted() end
+    return OnEviscerateSucceeded(unit, castGUID, spellID)
+end
+
 local function OnItemActiveStateChanged(frame)
     local role = roleByFrame[frame]
     if not role then return end
-    activeByFrame[frame] = SafeActive(frame)
+    local wasActive = activeByFrame[frame] == true
+    local isActive = SafeActive(frame)
+    activeByFrame[frame] = isActive
+    if role == ROLE_DANCE and isActive and not wasActive then OnShadowDanceStarted() end
 end
 
 function RAT:RefreshDrivers()
@@ -1139,6 +1196,8 @@ end
 function RAT:ResetSession()
     StartNewSession()
     state.pendingEviscerate = nil
+    state.recentPreDanceEviscerate = nil
+    state.lastDanceStartedAt = nil
     RefreshText()
 end
 
@@ -1278,7 +1337,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "UNIT_SPELLCAST_SENT" then
         OnEviscerateSent(arg1, arg3, arg4)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-        OnEviscerateSucceeded(arg1, arg2, arg3)
+        OnPlayerSpellcastSucceeded(arg1, arg2, arg3)
     elseif event == "UNIT_SPELLCAST_FAILED"
         or event == "UNIT_SPELLCAST_FAILED_QUIET"
         or event == "UNIT_SPELLCAST_INTERRUPTED" then
@@ -1301,6 +1360,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
             ArchiveSegment("encounterSegment", { killed = arg5 == 1 })
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
+        state.pendingEviscerate = nil
+        state.recentPreDanceEviscerate = nil
+        state.lastDanceStartedAt = nil
         ArchiveSegment("combatSegment")
     elseif event == "CHALLENGE_MODE_START" then
         BeginKeystoneSegment(arg1)
@@ -1354,6 +1416,8 @@ RAT._Test = {
     OnEviscerateSent = OnEviscerateSent,
     OnEviscerateSucceeded = OnEviscerateSucceeded,
     OnEviscerateFailed = OnEviscerateFailed,
+    OnShadowDanceStarted = OnShadowDanceStarted,
+    OnPlayerSpellcastSucceeded = OnPlayerSpellcastSucceeded,
     BeginCombatSegment = BeginCombatSegment,
     BeginEncounterSegment = BeginEncounterSegment,
     BeginKeystoneSegment = BeginKeystoneSegment,

@@ -662,16 +662,46 @@ Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
     "a failed empowered Darkest Night Eviscerate counted an attempt")
 TriggerEviscerate()
 es, ea, ss, sa = RAT:GetStats()
-Expect(es == 0 and ea == 1 and ss == 0 and sa == 1,
-    "the successful three-target Eviscerate did not count the out-of-Dance miss")
+Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
+    "a normal empowered Eviscerate outside Dance was counted as a failure")
 local liveCombat = RAT:GetCurrentSnapshot("combat")
+Expect(liveCombat and liveCombat.successes == 0 and liveCombat.attempts == 0,
+    "normal outside-Dance gameplay polluted the current-combat statistics")
+Expect(display.fonts[2].text == "COMBAT 0/0  0.0%   SESSION 0/0  0.0%",
+    "normal outside-Dance gameplay changed the tracker text")
+Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
+    "normal outside-Dance gameplay raised a training failure")
+
+now = now + 4
+eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SUCCEEDED",
+    "player", "Dance-Expired-Lead", 185313)
+es, ea, ss, sa = RAT:GetStats()
+Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
+    "an outside Eviscerate older than the three-second lead window counted as a miss")
+
+now = now + 1
+darkest:SetActive(false)
+ancient:SetActive(false)
+darkest:SetActive(true)
+ancient:SetActive(true)
+TriggerEviscerate()
+es, ea, ss, sa = RAT:GetStats()
+Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
+    "the pre-Dance candidate counted before Shadow Dance actually started")
+now = now + 2
+eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SUCCEEDED",
+    "player", "Dance-After-Evis", 185313)
+es, ea, ss, sa = RAT:GetStats()
+Expect(es == 0 and ea == 1 and ss == 0 and sa == 1,
+    "APEX spent within three seconds before Shadow Dance did not count as a miss")
+liveCombat = RAT:GetCurrentSnapshot("combat")
 Expect(liveCombat and liveCombat.successes == 0 and liveCombat.attempts == 1,
-    "current-combat snapshot did not expose the live APEX result")
+    "current-combat snapshot did not expose the confirmed pre-Dance miss")
 Expect(display.fonts[2].text == "COMBAT 0/1  0.0%   SESSION 0/1  0.0%",
-    "tracker did not render current combat and session independently")
+    "tracker did not render the confirmed pre-Dance miss")
 Expect(RAT:IsTrainingAlertActive() == true and trainingDisplay.shown == true
-    and trainingDisplay.fonts[1].text == "APEX MISSED - OUTSIDE SHADOW DANCE",
-    "confirmed out-of-Dance APEX use did not raise the immediate training failure")
+    and trainingDisplay.fonts[1].text == "APEX MISSED - BEFORE SHADOW DANCE",
+    "confirmed pre-Dance APEX use did not raise the training failure")
 local failureTimer = pendingTimers[#pendingTimers]
 failureTimer()
 Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
@@ -679,7 +709,10 @@ Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
 ancient:SetActive(false)
 dance:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
-Expect(ea == 1 and sa == 1, "Essential cooldown or late Dance counted the same Darkest Night twice")
+Expect(ea == 1 and sa == 1, "Dance aura activation counted the confirmed pre-Dance miss twice")
+dance:SetActive(true)
+es, ea, ss, sa = RAT:GetStats()
+Expect(ea == 1 and sa == 1, "duplicate Dance activation counted the same Darkest Night twice")
 
 darkest:SetActive(false)
 darkest:SetActive(true)
@@ -740,6 +773,12 @@ local function TriggerApexUse(inDance)
     darkest:SetActive(true)
     ancient:SetActive(true)
     TriggerEviscerate()
+    if inDance ~= true then
+        now = now + 2
+        eventFrame.OnEvent(eventFrame, "UNIT_SPELLCAST_SUCCEEDED",
+            "player", "Dance-Training-Miss-" .. castSerial, 185313)
+        dance:SetActive(true)
+    end
 end
 
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_DISABLED")

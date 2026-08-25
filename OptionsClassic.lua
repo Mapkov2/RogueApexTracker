@@ -563,10 +563,10 @@ function RAT:BuildOptions()
         defaults.showLastDungeon, "Show the latest completed or exited keystone dungeon snapshot on the tracker.",
         nil, enabledInitializer)
 
-    AddHeader(layout, "Training mode", "Immediate feedback when an Ancient Arts empowered Darkest Night Eviscerate is cast outside Shadow Dance.")
+    AddHeader(layout, "Training mode", "Immediate feedback when APEX is spent within three seconds before Shadow Dance instead of inside it.")
     local _, trainingInitializer = AddCheckbox(
         category, "RAT_TRAINING_MODE", "trainingMode", "Enable training mode", defaults.trainingMode,
-        "Show a separate warning after an Ancient Arts empowered Darkest Night Eviscerate succeeds outside the real Shadow Dance buff.",
+        "Show a separate warning only when Shadow Dance actually starts within three seconds after APEX was spent. Normal outside-Dance Eviscerates are ignored.",
         nil, enabledInitializer)
     AddCheckbox(category, "RAT_TRAINING_LOCKED", "trainingLocked",
         "Lock training alert position", defaults.trainingLocked,
