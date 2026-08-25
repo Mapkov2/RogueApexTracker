@@ -1,7 +1,21 @@
 local _, RAT = ...
 
 local HISTORY_LATEST = -1
-local VALID_TYPES = { combat = true, encounter = true, keystone = true }
+local CURRENT_TYPES = {
+    currentCombat = "combat",
+    currentEncounter = "encounter",
+    currentKeystone = "keystone",
+    session = "session",
+}
+local VALID_TYPES = {
+    currentCombat = true,
+    currentEncounter = true,
+    currentKeystone = true,
+    session = true,
+    combat = true,
+    encounter = true,
+    keystone = true,
+}
 local selection = { type = "combat", index = HISTORY_LATEST }
 local historyFrame
 
@@ -17,12 +31,17 @@ local function FormatPercent(value)
 end
 
 local function TypeLabel(historyType)
+    if historyType == "currentCombat" then return "Current Combat" end
+    if historyType == "currentEncounter" then return "Current Encounter" end
+    if historyType == "currentKeystone" then return "Current Keystone Dungeon" end
+    if historyType == "session" then return "Current Session" end
     if historyType == "encounter" then return "Encounter" end
     if historyType == "keystone" then return "Keystone Dungeon" end
     return "Last Combat"
 end
 
 local function ResultLabel(row)
+    if row.current then return "Live" end
     if row.type == "encounter" then return row.killed and "Kill" or "Wipe" end
     if row.type == "keystone" then
         if not row.completed then return "Exited" end
@@ -45,7 +64,15 @@ local function FormatKeystone(index, row)
 end
 
 local function SelectionText()
-    if selection.type == "encounter" then
+    if selection.type == "currentCombat" then
+        return "Current Combat"
+    elseif selection.type == "currentEncounter" then
+        return "Current Encounter"
+    elseif selection.type == "currentKeystone" then
+        return "Current Keystone Dungeon"
+    elseif selection.type == "session" then
+        return "Current Session"
+    elseif selection.type == "encounter" then
         if selection.index == HISTORY_LATEST then return "Last Encounter" end
         local row = RAT:GetHistoryEntry("encounter", selection.index)
         return row and FormatEncounter(selection.index, row) or "Last Encounter"
@@ -57,29 +84,43 @@ local function SelectionText()
     return "Last Combat"
 end
 
+local function SelectedRow()
+    local currentType = CURRENT_TYPES[selection.type]
+    if currentType then return RAT:GetCurrentSnapshot(currentType) end
+    return RAT:GetHistoryEntry(selection.type, selection.index)
+end
+
 local function UpdateHistoryFrame()
     if not historyFrame then return end
-    local row = RAT:GetHistoryEntry(selection.type, selection.index)
+    local row = SelectedRow()
     historyFrame.HistoryDropdown:OverrideText(SelectionText())
     historyFrame.RangeValue:SetText(SelectionText())
     if not row then
         historyFrame.TypeText:SetText(string.upper(TypeLabel(selection.type)))
         historyFrame.SummaryText:SetText("NO DATA AVAILABLE")
-        historyFrame.DetailText:SetText("Complete a matching combat range to create a snapshot.")
+        historyFrame.DetailText:SetText(CURRENT_TYPES[selection.type]
+            and "No matching range is active right now."
+            or "Complete a matching combat range to create a snapshot.")
         historyFrame.ResultText:SetText("")
         return
     end
 
     local successes, attempts = row.successes or 0, row.attempts or 0
-    historyFrame.TypeText:SetText(string.upper(TypeLabel(row.type)))
+    historyFrame.TypeText:SetText(string.upper(TypeLabel(row.current and selection.type or row.type)))
     historyFrame.SummaryText:SetText(string.format("APEX IN DANCE  %d/%d  %s",
         successes, attempts, FormatPercent(Percent(successes, attempts))))
-    local stamp = row.timestamp and row.timestamp > 0 and date("%Y-%m-%d %H:%M", row.timestamp) or "Unknown time"
     local label = row.type == "keystone"
         and string.format("%s +%d", row.mapName or row.label or "Keystone", tonumber(row.level) or 0)
         or row.label or TypeLabel(row.type)
-    historyFrame.DetailText:SetText(string.format("%s   |   %s   |   %ds",
-        label, stamp, tonumber(row.duration) or 0))
+    if row.current then
+        historyFrame.DetailText:SetText(string.format("%s   |   RIGHT NOW   |   %ds",
+            label, tonumber(row.duration) or 0))
+    else
+        local stamp = row.timestamp and row.timestamp > 0
+            and date("%Y-%m-%d %H:%M", row.timestamp) or "Unknown time"
+        historyFrame.DetailText:SetText(string.format("%s   |   %s   |   %ds",
+            label, stamp, tonumber(row.duration) or 0))
+    end
     historyFrame.ResultText:SetText(ResultLabel(row))
 end
 
@@ -96,8 +137,20 @@ local function IsHistorySelected(data)
 end
 
 local function SetupHistoryMenu(dropdown, rootDescription)
-    rootDescription:CreateTitle("Select History Range")
+    rootDescription:CreateTitle("Select Statistics Range")
     rootDescription:SetScrollMode(320)
+
+    local currentCombatData = { type = "currentCombat" }
+    local rightNow = rootDescription:CreateRadio("Right Now", IsHistorySelected, SelectHistory, currentCombatData)
+    rightNow:SetTitleAndTextTooltip("Right Now",
+        "Live statistics for the active combat, encounter, keystone dungeon, or client session.")
+    rightNow:CreateRadio("Current Combat", IsHistorySelected, SelectHistory, currentCombatData)
+    rightNow:CreateRadio("Current Encounter", IsHistorySelected, SelectHistory,
+        { type = "currentEncounter" })
+    rightNow:CreateRadio("Current Keystone Dungeon", IsHistorySelected, SelectHistory,
+        { type = "currentKeystone" })
+    rightNow:CreateRadio("Current Session", IsHistorySelected, SelectHistory,
+        { type = "session" })
 
     local combatData = { type = "combat", index = HISTORY_LATEST }
     local combat = rootDescription:CreateRadio("Last Combat", IsHistorySelected, SelectHistory, combatData)
@@ -155,9 +208,9 @@ local function EnsureHistoryFrame()
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
 
-    frame.Title = AddText(frame, "Rogue Apex Tracker - History", "GameFontHighlightLarge",
+    frame.Title = AddText(frame, "Rogue Apex Tracker - Statistics", "GameFontHighlightLarge",
         "TOPLEFT", frame, "TOPLEFT", 24, -20)
-    frame.RangeLabel = AddText(frame, "History Range", "GameFontNormal", "TOPLEFT", frame, "TOPLEFT", 28, -62)
+    frame.RangeLabel = AddText(frame, "Statistics Range", "GameFontNormal", "TOPLEFT", frame, "TOPLEFT", 28, -62)
     frame.HistoryDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
     frame.HistoryDropdown:SetPoint("LEFT", frame.RangeLabel, "RIGHT", 12, 0)
     frame.HistoryDropdown:SetWidth(245)

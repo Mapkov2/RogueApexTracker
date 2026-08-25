@@ -459,12 +459,12 @@ Expect(type(RAT.db.sessionState) == "table",
 Expect(registeredSettingsPanel ~= nil, "options panel was not registered")
 Expect(registeredSettingsPanel.name == "Rogue Apex Tracker",
     "native vertical settings category name drifted")
-Expect(nativeControls.checkbox >= 9, "native checkbox controls were not registered")
+Expect(nativeControls.checkbox >= 16, "native checkbox controls were not registered")
 Expect(nativeControls.slider >= 13, "native slider controls were not registered")
 Expect(slidersWithFormatter == nativeControls.slider, "one or more sliders have no visible value formatter")
 Expect(nativeControls.dropdown == 3, "native dropdown controls were not registered")
 Expect(nativeControls.color == 4, "native color controls were not registered")
-Expect(nativeControls.header >= 8, "native section headers were not registered")
+Expect(nativeControls.header >= 10, "native section headers were not registered")
 Expect(nativeControls.button >= 6, "native action buttons were not registered")
 Expect(nativeControls.custom == 1 and customInitializers[1].template == "RogueApexTrackerSupportFooterTemplate",
     "subtle support footer was not registered as the final custom row")
@@ -507,6 +507,11 @@ Expect(registeredSettings.RAT_BELOW_FOUR_TARGETS ~= nil,
 Expect(registeredSettings.RAT_TRAINING_MODE and registeredSettings.RAT_TRAINING_LOCKED
     and registeredSettings.RAT_TRAINING_OFFSET_X and registeredSettings.RAT_TRAINING_OFFSET_Y,
     "separate training-mode controls were not registered")
+Expect(registeredSettings.RAT_SHOW_CURRENT_COMBAT and registeredSettings.RAT_SHOW_CURRENT_ENCOUNTER
+    and registeredSettings.RAT_SHOW_CURRENT_DUNGEON and registeredSettings.RAT_SHOW_SESSION
+    and registeredSettings.RAT_SHOW_LAST_COMBAT
+    and registeredSettings.RAT_SHOW_LAST_ENCOUNTER and registeredSettings.RAT_SHOW_LAST_DUNGEON,
+    "live and archived tracker-display controls were not registered")
 Expect(rangeEventFrame and rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == true,
     "strict target tracking did not activate its own nameplate roster")
 registeredSettings.RAT_BELOW_FOUR_TARGETS:SetValue(false)
@@ -588,7 +593,8 @@ Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
     "training preview did not expire at the configured duration")
 registeredSettings.RAT_TRAINING_MODE:SetValue(true)
 Expect(display.shown == true, "eligible Subtlety Deathstalker did not show the tracker")
-Expect(display.fonts[2].text == "ENCOUNTER 0/0  0.0%   SESSION 0/0  0.0%", "initial statistics text drifted")
+Expect(display.fonts[2].text == "COMBAT 0/0  0.0%   SESSION 0/0  0.0%",
+    "initial live statistics text drifted")
 Expect(eventFrame.events.UNIT_AURA == nil, "tracker registered direct UNIT_AURA traffic")
 Expect(eventFrame.OnUpdate == nil, "tracker installed an OnUpdate poll")
 
@@ -614,6 +620,11 @@ ancient:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
 Expect(es == 0 and ea == 1 and ss == 0 and sa == 1,
     "Ancient Arts after Darkest Night did not count the three-target out-of-Dance miss")
+local liveCombat = RAT:GetCurrentSnapshot("combat")
+Expect(liveCombat and liveCombat.successes == 0 and liveCombat.attempts == 1,
+    "current-combat snapshot did not expose the live APEX result")
+Expect(display.fonts[2].text == "COMBAT 0/1  0.0%   SESSION 0/1  0.0%",
+    "tracker did not render current combat and session independently")
 Expect(RAT:IsTrainingAlertActive() == true and trainingDisplay.shown == true
     and trainingDisplay.fonts[1].text == "APEX MISSED - OUTSIDE SHADOW DANCE",
     "confirmed out-of-Dance APEX use did not raise the immediate training failure")
@@ -650,6 +661,10 @@ eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_ENABLED")
 Expect(#RAT:GetHistory() == 1, "completed combat was not added to history")
 Expect(RAT:GetHistory()[1].successes == 1 and RAT:GetHistory()[1].attempts == 2,
     "history row did not preserve encounter statistics")
+registeredSettings.RAT_SHOW_LAST_COMBAT:SetValue(true)
+Expect(display.fonts[2].text:find("\nLAST COMBAT 1/2  50.0%", 1, true),
+    "optional last-combat snapshot was not added below the live statistics")
+registeredSettings.RAT_SHOW_LAST_COMBAT:SetValue(false)
 
 darkest:SetActive(false)
 ancient:SetActive(false)
@@ -680,6 +695,13 @@ end
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_DISABLED")
 eventFrame.OnEvent(eventFrame, "ENCOUNTER_START", 9001, "Test Boss", 8, 5)
 TriggerApexUse(true)
+local currentEncounter = RAT:GetCurrentSnapshot("encounter")
+Expect(currentEncounter and currentEncounter.successes == 1 and currentEncounter.attempts == 1,
+    "current-encounter snapshot did not expose its live APEX result")
+registeredSettings.RAT_SHOW_CURRENT_ENCOUNTER:SetValue(true)
+Expect(display.fonts[2].text:find("ENCOUNTER 1/1  100.0%", 1, true),
+    "optional active encounter was not rendered on the tracker")
+registeredSettings.RAT_SHOW_CURRENT_ENCOUNTER:SetValue(false)
 now = now + 8
 eventFrame.OnEvent(eventFrame, "ENCOUNTER_END", 9001, "Test Boss", 8, 5, 1)
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_ENABLED")
@@ -698,6 +720,21 @@ eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_DISABLED")
 TriggerApexUse(false)
 eventFrame.OnEvent(eventFrame, "PLAYER_REGEN_ENABLED")
 now = now + 90
+local currentKeystone = RAT:GetCurrentSnapshot("keystone")
+Expect(currentKeystone and currentKeystone.successes == 1 and currentKeystone.attempts == 2,
+    "current-dungeon snapshot did not aggregate its live combats")
+Expect(display.fonts[2].text:find("DUNGEON 1/2  50.0%", 1, true),
+    "active dungeon total was not rendered on the tracker")
+RAT:OpenHistory("currentKeystone")
+local historyFrame = namedFrames.RogueApexTrackerHistoryFrame
+Expect(historyFrame.HistoryDropdown.overrideText == "Current Keystone Dungeon"
+    and historyFrame.SummaryText.text == "APEX IN DANCE  1/2  50.0%"
+    and historyFrame.DetailText.text:find("RIGHT NOW", 1, true),
+    "statistics browser did not expose the active dungeon range")
+RAT:OpenHistory("session")
+Expect(historyFrame.HistoryDropdown.overrideText == "Current Session"
+    and historyFrame.DetailText.text:find("RIGHT NOW", 1, true),
+    "statistics browser did not expose the current session")
 eventFrame.OnEvent(eventFrame, "CHALLENGE_MODE_COMPLETED")
 activeChallengeMapID = nil
 
@@ -712,7 +749,6 @@ Expect(#RAT:GetHistoryByType("combat") == 3,
     "last-combat snapshots did not remain independent from encounter and keystone snapshots")
 
 RAT:OpenHistory("keystone", -1)
-local historyFrame = namedFrames.RogueApexTrackerHistoryFrame
 Expect(historyFrame and historyFrame.shown == true, "history browser did not open")
 Expect(historyFrame.HistoryDropdown.overrideText == "Last Keystone Dungeon",
     "history browser did not show the selected range")
@@ -721,13 +757,16 @@ Expect(historyFrame.SummaryText.text == "APEX IN DANCE  1/2  50.0%",
 
 local historyRoot = NewMenuDescription("root")
 RAT._HistoryTest.SetupMenu(nil, historyRoot)
-Expect(historyRoot.title == "Select History Range" and historyRoot.scrollExtent == 320,
+Expect(historyRoot.title == "Select Statistics Range" and historyRoot.scrollExtent == 320,
     "history selector is not a bounded scrollable menu")
-local encounterMenu, keystoneMenu
+local rightNowMenu, encounterMenu, keystoneMenu
 for _, child in ipairs(historyRoot.children) do
+    if child.label == "Right Now" then rightNowMenu = child end
     if child.label == "Encounters" then encounterMenu = child end
     if child.label == "Keystone Dungeons" then keystoneMenu = child end
 end
+Expect(rightNowMenu and #rightNowMenu.children == 4,
+    "statistics selector did not expose combat, encounter, dungeon, and session right-now ranges")
 Expect(encounterMenu and #encounterMenu.children >= 2,
     "history selector did not expose individual encounters")
 Expect(keystoneMenu and #keystoneMenu.children >= 2,
@@ -741,7 +780,8 @@ Expect(#RAT:GetHistoryByType("combat") == 1 and #RAT:GetHistoryByType("encounter
 RAT.db.historyLimit = 20
 
 RAT:SetPreview(true)
-Expect(display.shown == true and display.fonts[2].text == "ENCOUNTER 3/4  75.0%   SESSION 12/15  80.0%",
+Expect(display.shown == true and display.fonts[2].text
+    == "COMBAT 3/4  75.0%   DUNGEON 8/10  80.0%   SESSION 12/15  80.0%",
     "preview did not show sample statistics")
 RAT:SetPreview(false)
 RAT.db.enabled = false

@@ -25,7 +25,9 @@ seconds while that rule is enabled. Unknown range snapshots fail closed.
 - Independently movable and configurable training alert
 - Optional strict 1-3 in-range target rule
 - Encounter and reload-safe session statistics
-- Last Combat, Encounter, and Keystone history
+- Configurable live Combat, Encounter, Dungeon, and Session statistics
+- Optional Last Combat, Last Encounter, and Last Dungeon values on the tracker
+- Right Now and archived ranges in the statistics browser
 - Movable and lockable display
 - Configurable fonts, outlines, colors, sizes, scale, and background
 - Embedded LibSharedMedia support
@@ -78,6 +80,27 @@ one-to-three-target rule as the statistics tracker.
 The alert has its own lock, drag position, offsets, scale, text size, color,
 duration, reset, and preview. Unlocking it keeps a placement label visible so it
 can be moved independently from the statistics tracker.
+
+## Statistics display
+
+The movable tracker can independently show:
+
+- Current Combat
+- Current Encounter
+- Current Keystone Dungeon
+- Current client session
+- Last Combat
+- Last Encounter
+- Last Keystone Dungeon
+
+Current Dungeon aggregates every combat from key start until completion or exit.
+Session statistics remain reload-safe. Historical values are read only from
+completed snapshots and are never mixed into the live counters. The tracker
+automatically adds rows when more ranges are enabled.
+
+The statistics browser contains a **Right Now** group for live Combat,
+Encounter, Dungeon, and Session values, followed by the existing archived
+Combat, Encounter, and Keystone history.
 
 ## Session behavior
 

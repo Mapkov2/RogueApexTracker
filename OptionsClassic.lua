@@ -527,6 +527,33 @@ function RAT:BuildOptions()
         SetRegisteredValue("RAT_OFFSET_Y", defaults.offsetY)
     end, "Return the tracker to its default screen position.")
 
+    AddHeader(layout, "Live statistics on tracker", "Choose which right-now ranges are shown directly on the movable tracker.")
+    AddCheckbox(category, "RAT_SHOW_CURRENT_COMBAT", "showCurrentCombat",
+        "Show current combat", defaults.showCurrentCombat,
+        "Show the active combat's APEX results. Outside combat this range displays 0/0.",
+        nil, enabledInitializer)
+    AddCheckbox(category, "RAT_SHOW_CURRENT_ENCOUNTER", "showCurrentEncounter",
+        "Show current encounter", defaults.showCurrentEncounter,
+        "Show the active boss encounter as its own live range. Hidden while no encounter is active.",
+        nil, enabledInitializer)
+    AddCheckbox(category, "RAT_SHOW_CURRENT_DUNGEON", "showCurrentDungeon",
+        "Show current dungeon", defaults.showCurrentDungeon,
+        "Show the complete active keystone dungeon total across all of its combats. Hidden outside an active key.",
+        nil, enabledInitializer)
+    AddCheckbox(category, "RAT_SHOW_SESSION", "showSession", "Show current session",
+        defaults.showSession, "Show the reload-safe current client-session total.", nil, enabledInitializer)
+
+    AddHeader(layout, "History on tracker", "Optionally place the newest archived snapshots below the live statistics.")
+    AddCheckbox(category, "RAT_SHOW_LAST_COMBAT", "showLastCombat", "Show last combat",
+        defaults.showLastCombat, "Show the latest completed combat snapshot on the tracker.",
+        nil, enabledInitializer)
+    AddCheckbox(category, "RAT_SHOW_LAST_ENCOUNTER", "showLastEncounter", "Show last encounter",
+        defaults.showLastEncounter, "Show the latest completed boss encounter snapshot on the tracker.",
+        nil, enabledInitializer)
+    AddCheckbox(category, "RAT_SHOW_LAST_DUNGEON", "showLastDungeon", "Show last dungeon",
+        defaults.showLastDungeon, "Show the latest completed or exited keystone dungeon snapshot on the tracker.",
+        nil, enabledInitializer)
+
     AddHeader(layout, "Training mode", "Immediate feedback when a confirmed Darkest Night empowerment happens outside Shadow Dance.")
     local _, trainingInitializer = AddCheckbox(
         category, "RAT_TRAINING_MODE", "trainingMode", "Enable training mode", defaults.trainingMode,
@@ -561,7 +588,7 @@ function RAT:BuildOptions()
         SetRegisteredValue("RAT_TRAINING_OFFSET_Y", defaults.trainingOffsetY)
     end, "Return only the training alert to its default screen position.")
 
-    AddHeader(layout, "Statistics and history")
+    AddHeader(layout, "Statistics storage and browser")
     AddSlider(category, "RAT_DECIMALS", "decimals", "Percentage decimals", defaults.decimals,
         0, 2, 1, "Number of decimal places shown in percentages.", nil, nil, enabledInitializer)
     AddSlider(category, "RAT_HISTORY_LIMIT", "historyLimit", "Stored history entries", defaults.historyLimit,
@@ -569,8 +596,8 @@ function RAT:BuildOptions()
     AddCheckbox(category, "RAT_HISTORY_ATTEMPTS", "historyOnlyWithAttempts",
         "Only store fights with APEX uses", defaults.historyOnlyWithAttempts,
         "Ignore fights where no Ancient Arts empowerment was recorded.", nil, enabledInitializer)
-    AddButton(layout, "History browser", "Open history", function() RAT:OpenHistory() end,
-        "Inspect Last Combat, individual Encounters, and complete Keystone Dungeon snapshots.")
+    AddButton(layout, "Statistics browser", "Open statistics", function() RAT:OpenHistory() end,
+        "Inspect right-now Combat, Encounter, Dungeon, and Session totals plus archived history snapshots.")
     AddButton(layout, "Current session", "Reset statistics", function() RAT:ResetSession() end,
         "Reset encounter and session counters without deleting stored history.")
     AddButton(layout, "Stored history", "Clear history", function() RAT:ClearHistory() end,
@@ -580,7 +607,7 @@ function RAT:BuildOptions()
     AddProxyCheckbox(category, "RAT_PREVIEW", "Show preview", false,
         function() return RAT:IsPreviewActive() end,
         function(value) RAT:SetPreview(value) end,
-        "Show sample statistics while configuring the tracker.", enabledInitializer)
+        "Show sample live and archived statistics for the selected tracker ranges.", enabledInitializer)
 
     AddSupportFooter(layout)
 

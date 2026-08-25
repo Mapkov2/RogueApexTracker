@@ -40,6 +40,13 @@ local defaults = {
     historyLimit = 20,
     historyOnlyWithAttempts = true,
     onlyCountBelowFourTargets = true,
+    showCurrentCombat = true,
+    showCurrentEncounter = false,
+    showCurrentDungeon = true,
+    showSession = true,
+    showLastCombat = false,
+    showLastEncounter = false,
+    showLastDungeon = false,
     trainingMode = false,
     trainingLocked = true,
     trainingDuration = 2,
@@ -470,19 +477,66 @@ end
 
 local function RefreshText()
     if not statsText then return end
-    local encounterAttempts = state.encounterAttempts
-    local encounterSuccesses = state.encounterSuccesses
-    local sessionAttempts = state.sessionAttempts
-    local sessionSuccesses = state.sessionSuccesses
-    if state.preview then
-        encounterAttempts, encounterSuccesses = 4, 3
-        sessionAttempts, sessionSuccesses = 15, 12
+
+    local function FormatRange(label, successes, attempts)
+        successes = Counter(successes)
+        attempts = Counter(attempts)
+        return string.format("%s %d/%d  %s", label, successes, attempts,
+            FormatPercent(Percent(successes, attempts)))
     end
-    statsText:SetText(string.format(
-        "ENCOUNTER %d/%d  %s   SESSION %d/%d  %s",
-        encounterSuccesses, encounterAttempts, FormatPercent(Percent(encounterSuccesses, encounterAttempts)),
-        sessionSuccesses, sessionAttempts, FormatPercent(Percent(sessionSuccesses, sessionAttempts))))
+
+    local function AddRange(parts, enabled, label, row, previewSuccesses, previewAttempts)
+        if enabled ~= true then return end
+        if state.preview then
+            parts[#parts + 1] = FormatRange(label, previewSuccesses, previewAttempts)
+        elseif row then
+            parts[#parts + 1] = FormatRange(label, row.successes, row.attempts)
+        end
+    end
+
+    local function LatestHistory(historyType)
+        local history = RAT.db and RAT.db.history or {}
+        for index = 1, #history do
+            local row = history[index]
+            if type(row) == "table" and row.type == historyType then return row end
+        end
+    end
+
+    local current, archived = {}, {}
+    local combat = state.combatSegment or { successes = 0, attempts = 0 }
+    AddRange(current, RAT.db.showCurrentCombat, "COMBAT", combat, 3, 4)
+    AddRange(current, RAT.db.showCurrentEncounter, "ENCOUNTER", state.encounterSegment, 2, 3)
+    AddRange(current, RAT.db.showCurrentDungeon, "DUNGEON", state.keystoneSegment, 8, 10)
+    AddRange(current, RAT.db.showSession, "SESSION", {
+        successes = state.sessionSuccesses,
+        attempts = state.sessionAttempts,
+    }, 12, 15)
+
+    AddRange(archived, RAT.db.showLastCombat, "LAST COMBAT", LatestHistory("combat"), 1, 2)
+    AddRange(archived, RAT.db.showLastEncounter, "LAST ENCOUNTER", LatestHistory("encounter"), 4, 5)
+    AddRange(archived, RAT.db.showLastDungeon, "LAST DUNGEON", LatestHistory("keystone"), 14, 18)
+
+    local lines = {}
+    local function AppendWrapped(parts)
+        if #parts == 0 then return end
+        if #parts <= 3 then
+            lines[#lines + 1] = table.concat(parts, "   ")
+        else
+            lines[#lines + 1] = table.concat({ parts[1], parts[2] }, "   ")
+            lines[#lines + 1] = table.concat({ parts[3], parts[4] }, "   ")
+        end
+    end
+    AppendWrapped(current)
+    AppendWrapped(archived)
+
+    statsText:SetText(table.concat(lines, "\n"))
+    statsText:SetShown(#lines > 0)
+    if display then
+        local statsSize = Clamp(RAT.db and RAT.db.statsSize or defaults.statsSize, 10, 48)
+        display:SetHeight(math.max(72, 72 + ((#lines - 1) * (statsSize + 10))))
+    end
     if RAT.RefreshOptions then RAT:RefreshOptions() end
+    if RAT.RefreshHistory then RAT:RefreshHistory() end
 end
 
 local function StorePosition()
@@ -743,8 +797,7 @@ local function TrimHistory()
 end
 
 local function NotifyHistoryChanged()
-    if RAT.RefreshOptions then RAT:RefreshOptions() end
-    if RAT.RefreshHistory then RAT:RefreshHistory() end
+    RefreshText()
 end
 
 local function NewSegment(historyType, label, metadata)
@@ -948,6 +1001,36 @@ function RAT:GetStats()
     return state.encounterSuccesses, state.encounterAttempts, state.sessionSuccesses, state.sessionAttempts
 end
 
+function RAT:GetCurrentSnapshot(rangeType)
+    if rangeType == "session" then
+        local duration = 0
+        local epoch = EpochNow()
+        if type(epoch) == "number" and type(state.clientStartedAt) == "number" then
+            duration = math.max(0, math.floor(epoch - state.clientStartedAt + 0.5))
+        end
+        return {
+            type = "session",
+            label = "Current Session",
+            successes = state.sessionSuccesses,
+            attempts = state.sessionAttempts,
+            duration = duration,
+            current = true,
+        }
+    end
+
+    local segment = rangeType == "combat" and state.combatSegment
+        or rangeType == "encounter" and state.encounterSegment
+        or rangeType == "keystone" and state.keystoneSegment
+        or nil
+    if not segment then return nil end
+    local snapshot = {}
+    for key, value in pairs(segment) do snapshot[key] = value end
+    snapshot.current = true
+    snapshot.duration = math.max(0, math.floor(
+        ((type(GetTime) == "function" and GetTime() or segment.startedAt) - segment.startedAt) + 0.5))
+    return snapshot
+end
+
 function RAT:GetHistory()
     return self.db and self.db.history or {}
 end
@@ -1016,7 +1099,6 @@ end
 function RAT:NotifySettingsChanged()
     TrimHistory()
     RefreshRuntime()
-    if self.RefreshHistory then self:RefreshHistory() end
 end
 
 function RAT:PrintHistory()

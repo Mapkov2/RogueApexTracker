@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 - 2026-08-25
+
+- Adds independently configurable tracker ranges for Current Combat, Current
+  Encounter, Current Dungeon, and the reload-safe Current Session.
+- Adds optional Last Combat, Last Encounter, and Last Dungeon snapshots directly
+  below the live tracker statistics.
+- Expands the statistics browser with a Right Now group for active Combat,
+  Encounter, Keystone Dungeon, and Session values.
+- Wraps selected statistics into additional rows and grows the tracker frame
+  automatically instead of mixing live and archived counters.
+
 ## 1.2.0 - 2026-08-25
 
 - Adds an opt-in training mode that immediately warns when a confirmed Darkest
