@@ -5,6 +5,30 @@ local LINK_HEIGHT = 26
 local LINK_GAP = 12
 local LINK_START_X = 37
 
+RogueApexTrackerThinDividerMixin = CreateFromMixins(SettingsListElementMixin)
+
+function RogueApexTrackerThinDividerMixin:OnLoad()
+    SettingsListElementMixin.OnLoad(self)
+    self:SetHeight(10)
+    self.Divider = self:CreateTexture(nil, "ARTWORK")
+    self.Divider:SetColorTexture(1, 1, 1, 0.10)
+    self.Divider:SetHeight(1)
+    self.Divider:SetPoint("LEFT", self, "LEFT", 37, 0)
+    self.Divider:SetPoint("RIGHT", self, "RIGHT", -20, 0)
+end
+
+function RogueApexTrackerThinDividerMixin:Init(initializer)
+    SettingsListElementMixin.Init(self, initializer)
+    self.Text:Hide()
+    self.Tooltip:Hide()
+    self.NewFeature:Hide()
+    self:EvaluateState()
+end
+
+function RogueApexTrackerThinDividerMixin:Release()
+    SettingsListElementMixin.Release(self)
+end
+
 local function SetLinkColor(button, highlighted)
     if not button or not button.Label then return end
     if highlighted then

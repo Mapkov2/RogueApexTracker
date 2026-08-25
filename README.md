@@ -32,6 +32,7 @@ seconds while that rule is enabled. Unknown range snapshots fail closed.
 - Configurable fonts, outlines, colors, sizes, scale, and background
 - Embedded LibSharedMedia support
 - Hover previews for font and texture menus
+- Subtle separators between options sections
 - Blizzard Addon Compartment support
 - Native Ancient Arts/Nightblade addon icon
 

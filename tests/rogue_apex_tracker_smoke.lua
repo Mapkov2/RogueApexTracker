@@ -466,15 +466,25 @@ Expect(nativeControls.dropdown == 3, "native dropdown controls were not register
 Expect(nativeControls.color == 4, "native color controls were not registered")
 Expect(nativeControls.header >= 10, "native section headers were not registered")
 Expect(nativeControls.button >= 6, "native action buttons were not registered")
-Expect(nativeControls.custom == 1 and customInitializers[1].template == "RogueApexTrackerSupportFooterTemplate",
-    "subtle support footer was not registered as the final custom row")
+local supportInitializer, dividerCount = nil, 0
+for index = 1, #customInitializers do
+    local initializer = customInitializers[index]
+    if initializer.template == "RogueApexTrackerSupportFooterTemplate" then
+        supportInitializer = initializer
+    elseif initializer.template == "RogueApexTrackerThinDividerTemplate" then
+        dividerCount = dividerCount + 1
+    end
+end
+local expectedDividers = nativeControls.header - 1
+Expect(supportInitializer and dividerCount == expectedDividers,
+    "section-only dividers or the subtle support footer were not registered")
 Expect(registeredSettingsPanel.layout.initializers[#registeredSettingsPanel.layout.initializers]
-        == customInitializers[1],
+        == supportInitializer,
     "support footer is not the bottom-most options row")
 Expect(nativeButtons["Patreon support"] == nil and nativeButtons["Options slash command"] == nil
     and nativeButtons["History slash command"] == nil,
     "legacy support or slash-command menu rows are still visible")
-local supportData = customInitializers[1].data
+local supportData = supportInitializer.data
 Expect(#supportData.links == 3
     and supportData.links[1].icon:find("Patreon.png", 1, true)
     and supportData.links[2].icon:find("PayPal.png", 1, true)

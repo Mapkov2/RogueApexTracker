@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 - 2026-08-25
+
+- Adds subtle one-pixel separators only between options sections for a clearer
+  classic layout without fragmenting related controls.
+
 ## 1.3.0 - 2026-08-25
 
 - Adds independently configurable tracker ranges for Current Combat, Current

@@ -1,4 +1,14 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <Frame name="RogueApexTrackerThinDividerTemplate"
+           inherits="SettingsListElementTemplate"
+           mixin="RogueApexTrackerThinDividerMixin"
+           virtual="true">
+        <Size x="620" y="10"/>
+        <Scripts>
+            <OnLoad method="OnLoad"/>
+        </Scripts>
+    </Frame>
+
     <Frame name="RogueApexTrackerSupportFooterTemplate"
            inherits="SettingsListElementTemplate"
            mixin="RogueApexTrackerSupportFooterMixin"

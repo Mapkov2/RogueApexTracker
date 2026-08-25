@@ -2,6 +2,8 @@ local _, RAT = ...
 
 local registered = false
 local category
+local activeLayout
+local hasSectionHeader = false
 local settingsByVariable = {}
 local refreshingSettings = false
 local mediaCallbackOwner = {}
@@ -105,10 +107,24 @@ local function SetValueCallback(setting, callback)
     end)
 end
 
+local AddThinDivider
+
 local function AddHeader(layout, text, tooltip)
+    if hasSectionHeader and AddThinDivider then AddThinDivider() end
     if CreateSettingsListSectionHeaderInitializer then
         layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(text, tooltip))
+        hasSectionHeader = true
     end
+end
+
+AddThinDivider = function()
+    if not (activeLayout and Settings and type(Settings.CreateElementInitializer) == "function") then return end
+    local initializer = Settings.CreateElementInitializer("RogueApexTrackerThinDividerTemplate", {
+        name = "",
+        tooltip = nil,
+    })
+    initializer.hideText = true
+    activeLayout:AddInitializer(initializer)
 end
 
 local function AddCheckbox(categoryObject, variable, key, label, defaultValue, tooltip, callback, parent)
@@ -453,6 +469,8 @@ function RAT:BuildOptions()
     local defaults = self.DEFAULTS
     local layout
     category, layout = Settings.RegisterVerticalLayoutCategory("Rogue Apex Tracker")
+    activeLayout = layout
+    hasSectionHeader = false
 
     AddHeader(layout, "Tracker", "Core display controls.")
     local _, enabledInitializer = AddCheckbox(
