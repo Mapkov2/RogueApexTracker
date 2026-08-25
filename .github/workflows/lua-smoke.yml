@@ -1,0 +1,29 @@
+name: Lua smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+
+      - name: Parse addon Lua
+        run: |
+          luac5.1 -p Core.lua
+          luac5.1 -p History.lua
+          luac5.1 -p OptionsClassic.lua
+          luac5.1 -p Libs/LibStub/LibStub.lua
+          luac5.1 -p Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
+          luac5.1 -p Libs/LibSharedMedia-3.0/LibSharedMedia-3.0.lua
+
+      - name: Run standalone smoke
+        run: lua5.1 tests/rogue_apex_tracker_smoke.lua

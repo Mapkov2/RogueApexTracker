@@ -1,0 +1,7 @@
+# Local legacy implementation; the live addon loads OptionsClassic.lua.
+Options.lua
+
+# Local build output.
+*.zip
+*.luac
+release/

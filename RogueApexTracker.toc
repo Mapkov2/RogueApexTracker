@@ -1,0 +1,21 @@
+## Interface: 120007, 120100
+## Title: |cffc79cffRogue Apex Tracker|r
+## Notes: Event-driven Darkest Night empowerment statistics for Subtlety Deathstalker.
+## Author: Mapko
+## Category: Combat
+## Version: 1.1.2
+## X-Website: https://github.com/Mapkov2/RogueApexTracker
+## X-License: MIT
+## SavedVariables: RogueApexTrackerDB, MidnightRogueApexTrackerDB
+## OptionalDeps: Blizzard_CooldownViewer, LibSharedMedia-3.0
+## IconTexture: Interface\Icons\Ability_Rogue_Nightblade
+## AddonCompartmentFunc: RAT_AddonCompartment_OnClick
+## AddonCompartmentFuncOnEnter: RAT_AddonCompartment_OnEnter
+## AddonCompartmentFuncOnLeave: RAT_AddonCompartment_OnLeave
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibSharedMedia-3.0\LibSharedMedia-3.0.lua
+Core.lua
+History.lua
+OptionsClassic.lua
