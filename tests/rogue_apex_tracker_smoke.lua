@@ -464,20 +464,19 @@ Expect(nativeControls.slider >= 13, "native slider controls were not registered"
 Expect(slidersWithFormatter == nativeControls.slider, "one or more sliders have no visible value formatter")
 Expect(nativeControls.dropdown == 3, "native dropdown controls were not registered")
 Expect(nativeControls.color == 4, "native color controls were not registered")
-Expect(nativeControls.header >= 10, "native section headers were not registered")
+Expect(nativeControls.header == 1, "the first native section header was not registered")
 Expect(nativeControls.button >= 6, "native action buttons were not registered")
-local supportInitializer, dividerCount = nil, 0
+local supportInitializer, sectionHeaderCount = nil, 0
 for index = 1, #customInitializers do
     local initializer = customInitializers[index]
     if initializer.template == "RogueApexTrackerSupportFooterTemplate" then
         supportInitializer = initializer
-    elseif initializer.template == "RogueApexTrackerThinDividerTemplate" then
-        dividerCount = dividerCount + 1
+    elseif initializer.template == "RogueApexTrackerSectionHeaderTemplate" then
+        sectionHeaderCount = sectionHeaderCount + 1
     end
 end
-local expectedDividers = nativeControls.header - 1
-Expect(supportInitializer and dividerCount == expectedDividers,
-    "section-only dividers or the subtle support footer were not registered")
+Expect(supportInitializer and sectionHeaderCount == 9,
+    "one or more divider-backed section headers or the subtle support footer were not registered")
 Expect(registeredSettingsPanel.layout.initializers[#registeredSettingsPanel.layout.initializers]
         == supportInitializer,
     "support footer is not the bottom-most options row")

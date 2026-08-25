@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.2 - 2026-08-25
+
+- Attaches each options separator directly to its section header so every
+  heading boundary remains visible while scrolling.
+
 ## 1.3.1 - 2026-08-25
 
 - Adds subtle one-pixel separators only between options sections for a clearer

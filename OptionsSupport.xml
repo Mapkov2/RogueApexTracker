@@ -1,12 +1,19 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
-    <Frame name="RogueApexTrackerThinDividerTemplate"
-           inherits="SettingsListElementTemplate"
-           mixin="RogueApexTrackerThinDividerMixin"
+    <Frame name="RogueApexTrackerSectionHeaderTemplate"
+           inherits="SettingsListSectionHeaderTemplate"
            virtual="true">
-        <Size x="620" y="10"/>
-        <Scripts>
-            <OnLoad method="OnLoad"/>
-        </Scripts>
+        <Layers>
+            <Layer level="ARTWORK">
+                <Texture parentKey="Divider">
+                    <Size y="1"/>
+                    <Anchors>
+                        <Anchor point="TOPLEFT" x="37" y="-2"/>
+                        <Anchor point="TOPRIGHT" x="-20" y="-2"/>
+                    </Anchors>
+                    <Color r="1" g="1" b="1" a="0.10"/>
+                </Texture>
+            </Layer>
+        </Layers>
     </Frame>
 
     <Frame name="RogueApexTrackerSupportFooterTemplate"
