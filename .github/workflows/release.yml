@@ -1,0 +1,184 @@
+name: Release
+run-name: Publish ${{ inputs.tag_name || github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing version tag to publish, for example v1.4.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rogue-apex-tracker-release-${{ inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Mapkov2/RogueApexTracker'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Validate release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          toc_version="$(sed -n 's/^## Version:[[:space:]]*//p' RogueApexTracker.toc | head -n 1 | tr -d '\r')"
+
+          if [[ -z "$version" || "$RELEASE_TAG" != v* ]]; then
+            echo "Release tag must start with v: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [[ "$toc_version" != "$version" ]]; then
+            echo "Tag $RELEASE_TAG does not match TOC version $toc_version." >&2
+            exit 1
+          fi
+          if [[ -z "$CF_API_KEY" ]]; then
+            echo "Missing GitHub Actions secret CF_API_KEY." >&2
+            exit 1
+          fi
+          if [[ ! "$CURSEFORGE_PROJECT_ID" =~ ^[0-9]+$ ]]; then
+            echo "Missing numeric GitHub Actions variable CURSEFORGE_PROJECT_ID." >&2
+            exit 1
+          fi
+
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+
+      - name: Validate addon
+        run: |
+          set -euo pipefail
+          luac5.1 -p Core.lua
+          luac5.1 -p History.lua
+          luac5.1 -p OptionsClassic.lua
+          luac5.1 -p OptionsSupport.lua
+          luac5.1 -p Libs/LibStub/LibStub.lua
+          luac5.1 -p Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
+          luac5.1 -p Libs/LibSharedMedia-3.0/LibSharedMedia-3.0.lua
+          lua5.1 tests/rogue_apex_tracker_smoke.lua
+
+      - name: Build release package
+        shell: bash
+        run: |
+          set -euo pipefail
+          addon="dist/stage/RogueApexTracker"
+          mkdir -p "$addon"
+
+          cp CHANGELOG.md Core.lua History.lua LICENSE OptionsClassic.lua \
+            OptionsSupport.lua OptionsSupport.xml README.md \
+            RogueApexTracker.toc THIRD_PARTY_NOTICES.md "$addon/"
+          cp -R Libs Media "$addon/"
+
+          mkdir -p dist
+          (
+            cd dist/stage
+            zip -q -r "../RogueApexTracker-${RELEASE_VERSION}.zip" RogueApexTracker
+          )
+
+          notes="dist/RELEASE_NOTES.md"
+          awk -v version="$RELEASE_VERSION" '
+            $0 ~ "^## " version "([[:space:]]|-)" { active = 1; next }
+            active && /^## / { exit }
+            active { print }
+          ' CHANGELOG.md > "$notes"
+          if [[ ! -s "$notes" ]]; then
+            echo "No changelog section found for $RELEASE_VERSION." >&2
+            exit 1
+          fi
+
+          zip_path="dist/RogueApexTracker-${RELEASE_VERSION}.zip"
+          unzip -t "$zip_path"
+          entries="$(unzip -Z1 "$zip_path")"
+          grep -qx 'RogueApexTracker/RogueApexTracker.toc' <<< "$entries"
+          if grep -Eq '(^|/)(\.git|tests|release)(/|$)|\.zip$|RogueApexTracker/Options\.lua$|\\' <<< "$entries"; then
+            echo "Development-only or invalid package entry detected." >&2
+            exit 1
+          fi
+          sha256sum "$zip_path"
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          zip_path="dist/RogueApexTracker-${RELEASE_VERSION}.zip"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$zip_path" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$zip_path" \
+              --title "Rogue Apex Tracker ${RELEASE_VERSION}" \
+              --notes-file dist/RELEASE_NOTES.md \
+              --latest
+          fi
+
+      - name: Publish CurseForge release
+        shell: bash
+        run: |
+          set -euo pipefail
+          lower_tag="${RELEASE_TAG,,}"
+          release_type="release"
+          if [[ "$lower_tag" == *alpha* ]]; then
+            release_type="alpha"
+          elif [[ "$lower_tag" == *beta* || "$lower_tag" == *rc* ]]; then
+            release_type="beta"
+          fi
+
+          interface="$(sed -n 's/^## Interface:[[:space:]]*//p' RogueApexTracker.toc \
+            | tr ',' '\n' | tr -d '[:space:]\r' | sort -nr | head -n 1)"
+          if [[ ! "$interface" =~ ^[0-9]{6}$ ]]; then
+            echo "Invalid Retail Interface value: $interface" >&2
+            exit 1
+          fi
+          major=$((10#$interface / 10000))
+          minor=$(((10#$interface % 10000) / 100))
+          patch=$((10#$interface % 100))
+          retail_version="${major}.${minor}.${patch}"
+
+          metadata="$(jq -n \
+            --arg changelog "$(cat dist/RELEASE_NOTES.md)" \
+            --arg displayName "Rogue Apex Tracker ${RELEASE_VERSION}" \
+            --arg gameVersion "$retail_version" \
+            --arg releaseType "$release_type" \
+            '{
+              changelog: $changelog,
+              changelogType: "markdown",
+              displayName: $displayName,
+              gameVersionNames: [$gameVersion],
+              releaseType: $releaseType
+            }')"
+
+          response="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "X-Api-Token: $CF_API_KEY" \
+            --header "Accept: application/json" \
+            --form "metadata=$metadata" \
+            --form "file=@dist/RogueApexTracker-${RELEASE_VERSION}.zip" \
+            "https://wow.curseforge.com/api/projects/${CURSEFORGE_PROJECT_ID}/upload-file")"
+          file_id="$(jq -r '.id // empty' <<< "$response")"
+          if [[ -z "$file_id" ]]; then
+            echo "CurseForge upload returned no file ID: $response" >&2
+            exit 1
+          fi
+          echo "CurseForge file ID: $file_id"
