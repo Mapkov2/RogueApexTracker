@@ -969,6 +969,12 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
             SLASH_ROGUEAPEXTRACKER1 = "/rat"
             SLASH_ROGUEAPEXTRACKER2 = "/rogueapex"
             SlashCmdList.ROGUEAPEXTRACKER = HandleSlash
+            SLASH_ROGUEAPEXTRACKERMENU1 = "/ratmenu"
+            SlashCmdList.ROGUEAPEXTRACKERMENU = function() RAT:OpenOptions() end
+            SLASH_ROGUEAPEXTRACKERHISTORY1 = "/rathistory"
+            SlashCmdList.ROGUEAPEXTRACKERHISTORY = function()
+                if RAT.OpenHistory then RAT:OpenHistory() else RAT:PrintHistory() end
+            end
         elseif arg1 == "Blizzard_CooldownViewer" and RAT.db then
             C_Timer.After(0, function() RAT:RefreshDrivers() end)
         end

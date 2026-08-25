@@ -48,6 +48,16 @@ Restart World of Warcraft, enable **Rogue Apex Tracker**, and log in.
 - `/rat reset` - reset the current encounter and session statistics
 - `/rat history` - open the history browser
 - `/rat clear` - clear stored history
+- `/ratmenu` - open the options directly
+- `/rathistory` - open the history browser directly
+
+## Support
+
+The bottom of the options menu contains copy-link buttons for:
+
+- [Patreon](https://www.patreon.com/cw/MidnightSimpleUnitframes)
+- [PayPal](https://www.paypal.com/ncp/payment/H3N2P87S53KBQ)
+- [Ko-fi](https://ko-fi.com/midnightsimpleunitframes#linkModal)
 
 ## Target-count rule
 

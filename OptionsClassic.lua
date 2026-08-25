@@ -237,6 +237,95 @@ local function AddButton(layout, name, buttonText, callback, tooltip)
     layout:AddInitializer(CreateSettingsButtonInitializer(name, buttonText, callback, tooltip, true))
 end
 
+local supportLinks = {
+    {
+        title = "Patreon",
+        url = "https://www.patreon.com/cw/MidnightSimpleUnitframes",
+        tooltip = "Show the Patreon support link for copying.",
+    },
+    {
+        title = "PayPal",
+        url = "https://www.paypal.com/ncp/payment/H3N2P87S53KBQ",
+        tooltip = "Show the PayPal support link for copying.",
+    },
+    {
+        title = "Ko-fi",
+        url = "https://ko-fi.com/midnightsimpleunitframes#linkModal",
+        tooltip = "Show the Ko-fi support link for copying.",
+    },
+}
+
+local copyLinkPopup
+
+local function EnsureCopyLinkPopup()
+    if copyLinkPopup then return copyLinkPopup end
+    local frame = CreateFrame("Frame", "RogueApexTrackerCopyLinkPopup", UIParent, "BackdropTemplate")
+    frame:SetSize(440, 152)
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(100)
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    frame:SetBackdropColor(0.02, 0.02, 0.03, 0.96)
+    frame:SetBackdropBorderColor(0.35, 0.35, 0.4, 1)
+
+    frame.Title = frame:CreateFontString(nil, "OVERLAY")
+    frame.Title:SetPoint("TOP", frame, "TOP", 0, -16)
+    frame.Title:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
+    frame.Title:SetTextColor(1, 0.82, 0.08, 1)
+
+    frame.Hint = frame:CreateFontString(nil, "OVERLAY")
+    frame.Hint:SetPoint("TOP", frame.Title, "BOTTOM", 0, -8)
+    frame.Hint:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+    frame.Hint:SetText("Press Ctrl+C to copy:")
+    frame.Hint:SetTextColor(0.9, 0.9, 0.9, 1)
+
+    frame.EditBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+    frame.EditBox:SetAutoFocus(false)
+    frame.EditBox:SetSize(380, 32)
+    frame.EditBox:SetPoint("TOP", frame.Hint, "BOTTOM", 0, -12)
+    frame.EditBox:SetScript("OnEscapePressed", function() frame:Hide() end)
+    frame.EditBox:SetScript("OnEnterPressed", function() frame:Hide() end)
+
+    frame.Close = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    frame.Close:SetSize(120, 24)
+    frame.Close:SetPoint("BOTTOM", frame, "BOTTOM", 0, 12)
+    frame.Close:SetText(OKAY or "Okay")
+    frame.Close:RegisterForClicks("LeftButtonUp")
+    frame.Close:SetScript("OnClick", function() frame:Hide() end)
+
+    frame:SetScript("OnHide", function(self)
+        self.EditBox:ClearFocus()
+    end)
+    frame:Hide()
+    copyLinkPopup = frame
+    return frame
+end
+
+local function ShowCopyLink(title, url)
+    local frame = EnsureCopyLinkPopup()
+    frame.Title:SetText(title or "Support link")
+    frame.EditBox:SetText(url or "")
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    frame:Show()
+    frame.EditBox:SetFocus()
+    frame.EditBox:HighlightText()
+end
+
+function RAT:ShowCopyLink(title, url)
+    ShowCopyLink(title, url)
+end
+
 local function GetMediaNames(mediaType, selected)
     local result, seen = {}, {}
     local values = LSM and type(LSM.List) == "function" and LSM:List(mediaType) or nil
@@ -444,6 +533,22 @@ function RAT:BuildOptions()
         function() return RAT:IsPreviewActive() end,
         function(value) RAT:SetPreview(value) end,
         "Show sample statistics while configuring the tracker.", enabledInitializer)
+
+    AddHeader(layout, "Support", "Support the development of Rogue Apex Tracker and MSUF.")
+    for index = 1, #supportLinks do
+        local link = supportLinks[index]
+        AddButton(layout, link.title .. " support", "Copy link", function()
+            ShowCopyLink(link.title, link.url)
+        end, link.tooltip)
+    end
+
+    AddHeader(layout, "Slash commands", "Direct commands for the options and history windows.")
+    AddButton(layout, "Options slash command", "/ratmenu", function()
+        RAT:OpenOptions()
+    end, "Open the Rogue Apex Tracker options. /rat and /rogueapex continue to work.")
+    AddButton(layout, "History slash command", "/rathistory", function()
+        RAT:OpenHistory()
+    end, "Open the Rogue Apex Tracker history browser. /rat history continues to work.")
 
     Settings.RegisterAddOnCategory(category)
 end

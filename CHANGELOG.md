@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.3 - 2026-08-25
+
+- Adds Patreon, PayPal, and Ko-fi copy-link buttons at the bottom of the options.
+- Adds `/ratmenu` and `/rathistory` as direct slash-command aliases.
+
 ## 1.1.2 - 2026-08-25
 
 - Initial public standalone release.

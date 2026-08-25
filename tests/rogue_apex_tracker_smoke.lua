@@ -41,6 +41,7 @@ local openedSettingsCategory
 local registeredSettings = {}
 local nativeControls = { checkbox = 0, slider = 0, dropdown = 0, color = 0, button = 0, header = 0 }
 local nativeDropdowns = {}
+local nativeButtons = {}
 local slidersWithFormatter = 0
 local sharedMediaFonts, sharedMediaTextures
 local nameplateState = {
@@ -145,9 +146,11 @@ CreateSettingsListSectionHeaderInitializer = function(text, tooltip)
 end
 CreateSettingsButtonInitializer = function(name, text, callback, tooltip)
     nativeControls.button = nativeControls.button + 1
-    return NewInitializer("button", nil, {
+    local data = {
         name = name, text = text, callback = callback, tooltip = tooltip,
-    })
+    }
+    nativeButtons[name] = data
+    return NewInitializer("button", nil, data)
 end
 UIDropDownMenu_SetWidth = function(frame, width) frame.dropdownWidth = width end
 UIDropDownMenu_JustifyText = function(frame, justify) frame.dropdownJustify = justify end
@@ -335,6 +338,11 @@ function CreateFrame(_, name)
     function frame:SetPoint(_, _, _, x, y) self.point = { x = x or 0, y = y or 0 } end
     function frame:GetCenter() return 960 + (self.point and self.point.x or 0), 540 + (self.point and self.point.y or 0) end
     function frame:EnableMouse(value) self.mouse = value end
+    function frame:RegisterForClicks(...) self.clicks = { ... } end
+    function frame:SetAutoFocus(value) self.autoFocus = value end
+    function frame:SetFocus() self.focused = true end
+    function frame:ClearFocus() self.focused = false end
+    function frame:HighlightText() self.highlighted = true end
     function frame:SetShown(value) self.shown = value == true end
     function frame:IsShown() return self.shown == true end
     function frame:Show() self.shown = true end
@@ -427,12 +435,35 @@ Expect(nativeControls.slider >= 8, "native slider controls were not registered")
 Expect(slidersWithFormatter == nativeControls.slider, "one or more sliders have no visible value formatter")
 Expect(nativeControls.dropdown == 3, "native dropdown controls were not registered")
 Expect(nativeControls.color == 3, "native color controls were not registered")
-Expect(nativeControls.header >= 7, "native section headers were not registered")
-Expect(nativeControls.button >= 4, "native action buttons were not registered")
+Expect(nativeControls.header >= 9, "native section headers were not registered")
+Expect(nativeControls.button >= 9, "native action buttons were not registered")
+Expect(nativeButtons["Patreon support"] and nativeButtons["PayPal support"]
+    and nativeButtons["Ko-fi support"], "support-link buttons were not registered")
+Expect(nativeButtons["Options slash command"].text == "/ratmenu"
+    and nativeButtons["History slash command"].text == "/rathistory",
+    "direct slash commands were not shown in the options")
+Expect(SLASH_ROGUEAPEXTRACKERMENU1 == "/ratmenu"
+    and type(SlashCmdList.ROGUEAPEXTRACKERMENU) == "function",
+    "direct options slash command was not registered")
+Expect(SLASH_ROGUEAPEXTRACKERHISTORY1 == "/rathistory"
+    and type(SlashCmdList.ROGUEAPEXTRACKERHISTORY) == "function",
+    "direct history slash command was not registered")
 Expect(sharedMediaFonts and sharedMediaFonts > 5, "embedded LibSharedMedia fonts were not discovered")
 Expect(sharedMediaTextures and sharedMediaTextures > 1, "embedded LibSharedMedia textures were not discovered")
 Expect(RAT.db.fontName == "Friz Quadrata TT", "legacy font name was not migrated")
 Expect(RAT.db.outline == "OUTLINE", "legacy custom outline value was not normalized")
+nativeButtons["Patreon support"].callback()
+local copyLinkPopup = namedFrames.RogueApexTrackerCopyLinkPopup
+Expect(copyLinkPopup and copyLinkPopup.shown == true
+    and copyLinkPopup.EditBox.text == "https://www.patreon.com/cw/MidnightSimpleUnitframes",
+    "Patreon support button did not expose its copyable URL")
+nativeButtons["PayPal support"].callback()
+Expect(copyLinkPopup.EditBox.text == "https://www.paypal.com/ncp/payment/H3N2P87S53KBQ",
+    "PayPal support button did not expose its copyable URL")
+nativeButtons["Ko-fi support"].callback()
+Expect(copyLinkPopup.EditBox.text == "https://ko-fi.com/midnightsimpleunitframes#linkModal",
+    "Ko-fi support button did not expose its copyable URL")
+copyLinkPopup:Hide()
 Expect(registeredSettings.RAT_BELOW_FOUR_TARGETS ~= nil,
     "the separate below-four-target setting was not registered")
 Expect(rangeEventFrame and rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == true,
@@ -647,6 +678,12 @@ Expect(rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == nil,
     "disabled tracker left its standalone nameplate roster active")
 SlashCmdList.ROGUEAPEXTRACKER("")
 Expect(openedSettingsCategory == 7319, "slash command did not open the registered options category")
+openedSettingsCategory = nil
+SlashCmdList.ROGUEAPEXTRACKERMENU("")
+Expect(openedSettingsCategory == 7319, "/ratmenu did not open the registered options category")
+SlashCmdList.ROGUEAPEXTRACKERHISTORY("")
+Expect(namedFrames.RogueApexTrackerHistoryFrame.shown == true,
+    "/rathistory did not open the history browser")
 
 local expectedEncounterSuccesses, expectedEncounterAttempts,
     expectedSessionSuccesses, expectedSessionAttempts = RAT:GetStats()
