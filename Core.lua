@@ -40,6 +40,14 @@ local defaults = {
     historyLimit = 20,
     historyOnlyWithAttempts = true,
     onlyCountBelowFourTargets = true,
+    trainingMode = false,
+    trainingLocked = true,
+    trainingDuration = 2,
+    trainingSize = 30,
+    trainingScale = 1,
+    trainingOffsetX = 0,
+    trainingOffsetY = 120,
+    trainingColor = { 1, 0.18, 0.08, 1 },
     historySelectionType = "combat",
     history = {},
 }
@@ -58,6 +66,9 @@ local state = {
     sessionID = nil,
     rangeSnapshotValid = false,
     inRangeTargetCount = 0,
+    trainingAlertActive = false,
+    trainingPreviewActive = false,
+    trainingAlertGeneration = 0,
 }
 
 local roleByCooldownID = {}
@@ -71,6 +82,10 @@ local display
 local headerText
 local statsText
 local moverText
+local trainingDisplay
+local trainingText
+local trainingMoverText
+local trainingAlertTimer
 local eventFrame
 local rangeEventFrame
 local rangeTimer
@@ -483,6 +498,124 @@ local function StorePosition()
     RAT.db.offsetY = math.floor((((centerY * frameScale) - (rootY * rootScale)) / frameScale) + 0.5)
 end
 
+local function StoreTrainingPosition()
+    if not trainingDisplay or not RAT.db then return end
+    local centerX, centerY = trainingDisplay:GetCenter()
+    local rootX, rootY = UIParent:GetCenter()
+    if not centerX or not centerY or not rootX or not rootY then return end
+    local frameScale = trainingDisplay:GetEffectiveScale() or 1
+    local rootScale = UIParent:GetEffectiveScale() or frameScale
+    if frameScale <= 0 then frameScale = 1 end
+    if rootScale <= 0 then rootScale = frameScale end
+    RAT.db.trainingOffsetX = math.floor((((centerX * frameScale) - (rootX * rootScale)) / frameScale) + 0.5)
+    RAT.db.trainingOffsetY = math.floor((((centerY * frameScale) - (rootY * rootScale)) / frameScale) + 0.5)
+end
+
+local function EnsureTrainingDisplay()
+    trainingDisplay = trainingDisplay or _G.RogueApexTrackerTrainingFrame
+    if not trainingDisplay then
+        trainingDisplay = CreateFrame("Frame", "RogueApexTrackerTrainingFrame", UIParent)
+    end
+    if not trainingDisplay._ratConfigured then
+        trainingDisplay:SetSize(620, 64)
+        trainingDisplay:SetFrameStrata("DIALOG")
+        trainingDisplay:SetClampedToScreen(true)
+        trainingDisplay:SetMovable(true)
+        trainingDisplay:RegisterForDrag("LeftButton")
+        trainingDisplay:SetScript("OnDragStart", function(self)
+            if RAT.db.trainingLocked then return end
+            self:StartMoving()
+        end)
+        trainingDisplay:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            StoreTrainingPosition()
+            RAT:ApplySettings()
+            if RAT.RefreshOptions then RAT:RefreshOptions() end
+        end)
+        trainingDisplay:SetScript("OnMouseUp", function(_, button)
+            if button == "RightButton" then RAT:OpenOptions() end
+        end)
+        trainingDisplay._ratConfigured = true
+    end
+
+    trainingText = trainingText or trainingDisplay._ratTrainingText
+    if not trainingText then
+        trainingText = trainingDisplay:CreateFontString(nil, "OVERLAY")
+        trainingDisplay._ratTrainingText = trainingText
+        trainingText:SetPoint("CENTER", trainingDisplay, "CENTER", 0, 0)
+        trainingText:SetFont(FALLBACK_FONT, defaults.trainingSize, defaults.outline)
+        trainingText:SetText("APEX MISSED - OUTSIDE SHADOW DANCE")
+    end
+
+    trainingMoverText = trainingMoverText or trainingDisplay._ratTrainingMoverText
+    if not trainingMoverText then
+        trainingMoverText = trainingDisplay:CreateFontString(nil, "OVERLAY")
+        trainingDisplay._ratTrainingMoverText = trainingMoverText
+        trainingMoverText:SetPoint("BOTTOM", trainingDisplay, "TOP", 0, 2)
+        trainingMoverText:SetFont(FALLBACK_FONT, 11, "OUTLINE")
+        trainingMoverText:SetTextColor(0.22, 0.78, 0.94, 1)
+        trainingMoverText:SetText("TRAINING ALERT - DRAG TO MOVE")
+        trainingMoverText:Hide()
+    end
+    return trainingDisplay
+end
+
+local function CancelTrainingAlertTimer()
+    state.trainingAlertGeneration = state.trainingAlertGeneration + 1
+    local timer = trainingAlertTimer
+    trainingAlertTimer = nil
+    if timer and type(timer.Cancel) == "function" then timer:Cancel() end
+end
+
+local function ApplyTrainingSettings()
+    if not RAT.db then return end
+    local frame = EnsureTrainingDisplay()
+    local enabled = RAT.db.trainingMode == true or state.trainingPreviewActive == true
+    if RAT.db.trainingMode ~= true and state.trainingAlertActive and state.trainingPreviewActive ~= true then
+        CancelTrainingAlertTimer()
+        state.trainingAlertActive = false
+    end
+    local unlocked = enabled and RAT.db.trainingLocked ~= true
+    frame:SetScale(Clamp(RAT.db.trainingScale, 0.5, 2))
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER",
+        Clamp(RAT.db.trainingOffsetX, -2000, 2000),
+        Clamp(RAT.db.trainingOffsetY, -1200, 1200))
+    frame:EnableMouse(unlocked)
+    trainingMoverText:SetShown(unlocked)
+    trainingText:SetText(state.trainingAlertActive
+        and "APEX MISSED - OUTSIDE SHADOW DANCE" or "APEX TRAINING")
+    ApplyFont(trainingText, Clamp(RAT.db.trainingSize, 12, 64))
+    local color = RAT.db.trainingColor or defaults.trainingColor
+    trainingText:SetTextColor(color[1] or 1, color[2] or 0.18, color[3] or 0.08, color[4] or 1)
+    SetShadow(trainingText, RAT.db.shadow ~= false)
+    frame:SetAlpha(state.trainingAlertActive and 1 or 0.65)
+    frame:SetShown(enabled and (state.trainingAlertActive or unlocked))
+end
+
+local function ShowTrainingFailure(preview)
+    if not RAT.db or (RAT.db.trainingMode ~= true and preview ~= true) then return false end
+    CancelTrainingAlertTimer()
+    state.trainingAlertActive = true
+    state.trainingPreviewActive = preview == true
+    local generation = state.trainingAlertGeneration
+    ApplyTrainingSettings()
+    local function HideAlert()
+        if generation ~= state.trainingAlertGeneration then return end
+        trainingAlertTimer = nil
+        state.trainingAlertActive = false
+        state.trainingPreviewActive = false
+        ApplyTrainingSettings()
+    end
+    local duration = Clamp(RAT.db.trainingDuration, 0.5, 5)
+    if C_Timer and type(C_Timer.NewTimer) == "function" then
+        trainingAlertTimer = C_Timer.NewTimer(duration, HideAlert)
+    elseif C_Timer and type(C_Timer.After) == "function" then
+        C_Timer.After(duration, HideAlert)
+    end
+    return true
+end
+
 local function EnsureDisplay()
     display = display or _G.RogueApexTrackerFrame
     if not display then
@@ -585,6 +718,7 @@ function RAT:ApplySettings()
     end
     RefreshText()
     frame:SetShown(state.preview or IsEligible())
+    ApplyTrainingSettings()
 end
 
 local function TrimHistory()
@@ -745,6 +879,8 @@ local function RecordEmpower()
     if succeeded then
         state.encounterSuccesses = state.encounterSuccesses + 1
         state.sessionSuccesses = state.sessionSuccesses + 1
+    else
+        ShowTrainingFailure()
     end
     IncrementSegment(state.combatSegment, succeeded)
     IncrementSegment(state.encounterSegment, succeeded)
@@ -843,6 +979,14 @@ end
 
 function RAT:IsPreviewActive()
     return state.preview
+end
+
+function RAT:PreviewTrainingFailure()
+    return ShowTrainingFailure(true)
+end
+
+function RAT:IsTrainingAlertActive()
+    return state.trainingAlertActive == true
 end
 
 function RAT:ResetSession()
@@ -1056,6 +1200,7 @@ RAT._Test = {
     RoleByFrame = roleByFrame,
     ActiveByFrame = activeByFrame,
     DarkestNightTargetRuleEligible = DarkestNightTargetRuleEligible,
+    ShowTrainingFailure = ShowTrainingFailure,
     RestoreSessionState = RestoreSessionState,
     SaveSessionState = SaveSessionState,
     ClientStartedAt = ClientStartedAt,

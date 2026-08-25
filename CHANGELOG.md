@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 - 2026-08-25
+
+- Adds an opt-in training mode that immediately warns when a confirmed Darkest
+  Night empowerment happens outside the real Shadow Dance buff.
+- Adds an independently movable training alert with its own lock, position,
+  scale, text size, color, duration, reset, and preview controls.
+- Replaces the native Support buttons with a subtle bottom logo footer.
+- Removes slash commands from the visible options while retaining `/ratmenu`
+  and `/rathistory` as working aliases.
+
 ## 1.1.3 - 2026-08-25
 
 - Adds Patreon, PayPal, and Ko-fi copy-link buttons at the bottom of the options.

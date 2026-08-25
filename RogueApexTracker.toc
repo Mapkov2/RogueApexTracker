@@ -3,7 +3,7 @@
 ## Notes: Event-driven Darkest Night empowerment statistics for Subtlety Deathstalker.
 ## Author: Mapko
 ## Category: Combat
-## Version: 1.1.3
+## Version: 1.2.0
 ## X-Website: https://github.com/Mapkov2/RogueApexTracker
 ## X-License: MIT
 ## SavedVariables: RogueApexTrackerDB, MidnightRogueApexTrackerDB
@@ -18,4 +18,6 @@ Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
 Libs\LibSharedMedia-3.0\LibSharedMedia-3.0.lua
 Core.lua
 History.lua
+OptionsSupport.lua
+OptionsSupport.xml
 OptionsClassic.lua

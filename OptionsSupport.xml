@@ -1,0 +1,11 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <Frame name="RogueApexTrackerSupportFooterTemplate"
+           inherits="SettingsListElementTemplate"
+           mixin="RogueApexTrackerSupportFooterMixin"
+           virtual="true">
+        <Size x="620" y="64"/>
+        <Scripts>
+            <OnLoad method="OnLoad"/>
+        </Scripts>
+    </Frame>
+</Ui>

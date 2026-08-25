@@ -241,19 +241,33 @@ local supportLinks = {
     {
         title = "Patreon",
         url = "https://www.patreon.com/cw/MidnightSimpleUnitframes",
+        icon = "Interface\\AddOns\\RogueApexTracker\\Media\\Support\\Patreon.png",
         tooltip = "Show the Patreon support link for copying.",
     },
     {
         title = "PayPal",
         url = "https://www.paypal.com/ncp/payment/H3N2P87S53KBQ",
+        icon = "Interface\\AddOns\\RogueApexTracker\\Media\\Support\\PayPal.png",
         tooltip = "Show the PayPal support link for copying.",
     },
     {
         title = "Ko-fi",
         url = "https://ko-fi.com/midnightsimpleunitframes#linkModal",
+        icon = "Interface\\AddOns\\RogueApexTracker\\Media\\Support\\Ko-Fi.png",
         tooltip = "Show the Ko-fi support link for copying.",
     },
 }
+
+local function AddSupportFooter(layout)
+    if not (Settings and type(Settings.CreateElementInitializer) == "function") then return end
+    local initializer = Settings.CreateElementInitializer("RogueApexTrackerSupportFooterTemplate", {
+        name = "Support development",
+        tooltip = "Patreon, PayPal, and Ko-fi support links.",
+        links = supportLinks,
+    })
+    initializer.hideText = true
+    layout:AddInitializer(initializer)
+end
 
 local copyLinkPopup
 
@@ -513,6 +527,40 @@ function RAT:BuildOptions()
         SetRegisteredValue("RAT_OFFSET_Y", defaults.offsetY)
     end, "Return the tracker to its default screen position.")
 
+    AddHeader(layout, "Training mode", "Immediate feedback when a confirmed Darkest Night empowerment happens outside Shadow Dance.")
+    local _, trainingInitializer = AddCheckbox(
+        category, "RAT_TRAINING_MODE", "trainingMode", "Enable training mode", defaults.trainingMode,
+        "Show a separate warning immediately when Ancient Arts confirms an APEX Darkest Night use outside the real Shadow Dance buff.",
+        nil, enabledInitializer)
+    AddCheckbox(category, "RAT_TRAINING_LOCKED", "trainingLocked",
+        "Lock training alert position", defaults.trainingLocked,
+        "Disable this to keep the training alert visible and drag it independently from the statistics tracker.",
+        nil, trainingInitializer)
+    AddSlider(category, "RAT_TRAINING_DURATION", "trainingDuration", "Alert duration",
+        defaults.trainingDuration, 0.5, 5, 0.1, "How long a failed APEX warning remains visible.",
+        function(value) return string.format("%.1fs", value) end, nil, trainingInitializer)
+    AddSlider(category, "RAT_TRAINING_SIZE", "trainingSize", "Alert text size",
+        defaults.trainingSize, 12, 64, 1, "Font size of the failed APEX warning.",
+        nil, nil, trainingInitializer)
+    AddSlider(category, "RAT_TRAINING_SCALE", "trainingScale", "Alert scale",
+        defaults.trainingScale, 0.5, 2, 0.05, "Scale the separate training alert.",
+        function(value) return string.format("%.2f", value) end, nil, trainingInitializer)
+    AddColor(category, "RAT_TRAINING_COLOR", "trainingColor", "Alert color",
+        defaults.trainingColor, "Color of the failed APEX warning.", trainingInitializer)
+    AddSlider(category, "RAT_TRAINING_OFFSET_X", "trainingOffsetX", "Alert horizontal position",
+        defaults.trainingOffsetX, -2000, 2000, 1, "Horizontal offset of the separate training alert.",
+        nil, nil, trainingInitializer)
+    AddSlider(category, "RAT_TRAINING_OFFSET_Y", "trainingOffsetY", "Alert vertical position",
+        defaults.trainingOffsetY, -1200, 1200, 1, "Vertical offset of the separate training alert.",
+        nil, nil, trainingInitializer)
+    AddButton(layout, "Training alert preview", "Show test warning", function()
+        RAT:PreviewTrainingFailure()
+    end, "Show the separate failed APEX warning for the configured duration.")
+    AddButton(layout, "Training alert position", "Reset position", function()
+        SetRegisteredValue("RAT_TRAINING_OFFSET_X", defaults.trainingOffsetX)
+        SetRegisteredValue("RAT_TRAINING_OFFSET_Y", defaults.trainingOffsetY)
+    end, "Return only the training alert to its default screen position.")
+
     AddHeader(layout, "Statistics and history")
     AddSlider(category, "RAT_DECIMALS", "decimals", "Percentage decimals", defaults.decimals,
         0, 2, 1, "Number of decimal places shown in percentages.", nil, nil, enabledInitializer)
@@ -534,21 +582,7 @@ function RAT:BuildOptions()
         function(value) RAT:SetPreview(value) end,
         "Show sample statistics while configuring the tracker.", enabledInitializer)
 
-    AddHeader(layout, "Support", "Support the development of Rogue Apex Tracker and MSUF.")
-    for index = 1, #supportLinks do
-        local link = supportLinks[index]
-        AddButton(layout, link.title .. " support", "Copy link", function()
-            ShowCopyLink(link.title, link.url)
-        end, link.tooltip)
-    end
-
-    AddHeader(layout, "Slash commands", "Direct commands for the options and history windows.")
-    AddButton(layout, "Options slash command", "/ratmenu", function()
-        RAT:OpenOptions()
-    end, "Open the Rogue Apex Tracker options. /rat and /rogueapex continue to work.")
-    AddButton(layout, "History slash command", "/rathistory", function()
-        RAT:OpenHistory()
-    end, "Open the Rogue Apex Tracker history browser. /rat history continues to work.")
+    AddSupportFooter(layout)
 
     Settings.RegisterAddOnCategory(category)
 end

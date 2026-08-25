@@ -21,6 +21,8 @@ seconds while that rule is enabled. Unknown range snapshots fail closed.
 - Subtlety Deathstalker eligibility gate
 - Darkest Night to Ancient Arts attempt detection
 - Real Shadow Dance success detection
+- Optional immediate training warning for confirmed out-of-Dance APEX uses
+- Independently movable and configurable training alert
 - Optional strict 1-3 in-range target rule
 - Encounter and reload-safe session statistics
 - Last Combat, Encounter, and Keystone history
@@ -53,7 +55,7 @@ Restart World of Warcraft, enable **Rogue Apex Tracker**, and log in.
 
 ## Support
 
-The bottom of the options menu contains copy-link buttons for:
+The bottom of the options menu contains a subtle logo footer with copyable links for:
 
 - [Patreon](https://www.patreon.com/cw/MidnightSimpleUnitframes)
 - [PayPal](https://www.paypal.com/ncp/payment/H3N2P87S53KBQ)
@@ -65,6 +67,17 @@ When **Count Darkest Night only below 4 targets** is enabled, an APEX attempt
 counts only with one to three visible hostile nameplates in Eviscerate range.
 Four or more targets, missing nameplates, and unknown range results do not
 count. Disable the option if you do not want nameplate range sampling.
+
+## Training mode
+
+Enable **Training mode** to receive an immediate `APEX MISSED - OUTSIDE SHADOW
+DANCE` warning whenever Ancient Arts confirms a Darkest Night empowerment while
+the real Shadow Dance buff is not active. The warning follows the same optional
+one-to-three-target rule as the statistics tracker.
+
+The alert has its own lock, drag position, offsets, scale, text size, color,
+duration, reset, and preview. Unlocking it keeps a placement label visible so it
+can be moved independently from the statistics tracker.
 
 ## Session behavior
 

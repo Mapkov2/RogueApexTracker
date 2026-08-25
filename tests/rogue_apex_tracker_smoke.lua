@@ -7,6 +7,23 @@ local frames = {}
 local namedFrames = {}
 local RawPrint = print
 
+CreateFromMixins = function(...)
+    local result = {}
+    for index = 1, select("#", ...) do
+        local source = select(index, ...)
+        if type(source) == "table" then
+            for key, value in pairs(source) do result[key] = value end
+        end
+    end
+    return result
+end
+SettingsListElementMixin = {
+    OnLoad = function() end,
+    Init = function(self, initializer) self.data = initializer.data end,
+    Release = function(self) self.data = nil end,
+    EvaluateState = function() end,
+}
+
 _G = _G or {}
 MidnightRogueApexTrackerDB = { outline = "CUSTOM" }
 strmatch = string.match
@@ -39,9 +56,10 @@ GameTooltip = { SetOwner = function() end, AddLine = function() end, Show = func
 local registeredSettingsPanel
 local openedSettingsCategory
 local registeredSettings = {}
-local nativeControls = { checkbox = 0, slider = 0, dropdown = 0, color = 0, button = 0, header = 0 }
+local nativeControls = { checkbox = 0, slider = 0, dropdown = 0, color = 0, button = 0, header = 0, custom = 0 }
 local nativeDropdowns = {}
 local nativeButtons = {}
+local customInitializers = {}
 local slidersWithFormatter = 0
 local sharedMediaFonts, sharedMediaTextures
 local nameplateState = {
@@ -136,6 +154,13 @@ Settings = {
         nativeControls.color = nativeControls.color + 1
         local initializer = NewInitializer("color", setting)
         category.layout:AddInitializer(initializer)
+        return initializer
+    end,
+    CreateElementInitializer = function(template, data)
+        nativeControls.custom = nativeControls.custom + 1
+        local initializer = NewInitializer("custom", nil, data)
+        initializer.template = template
+        customInitializers[#customInitializers + 1] = initializer
         return initializer
     end,
 }
@@ -280,6 +305,7 @@ local function NewTexture()
     function texture:SetHeight(height) self.height = height end
     function texture:SetColorTexture(...) self.color = { ... } end
     function texture:SetTexture(path) self.texture = path end
+    function texture:SetAlpha(alpha) self.alpha = alpha end
     function texture:ClearAllPoints() self.point = nil end
     function texture:SetShown(shown) self.shown = shown == true end
     function texture:Show() self.shown = true end
@@ -316,6 +342,7 @@ function CreateFrame(_, name)
     function frame:CreateFontString() local fs = NewFontString() self.fonts[#self.fonts + 1] = fs return fs end
     function frame:CreateTexture() return NewTexture() end
     function frame:SetScale(scale) self.scale = scale end
+    function frame:SetAlpha(alpha) self.alpha = alpha end
     function frame:SetText(text) self.text = text end
     function frame:OverrideText(text) self.overrideText = text end
     function frame:SetupMenu(callback) self.menuSetup = callback end
@@ -405,6 +432,8 @@ local chunk = assert(loadfile("Core.lua"))
 chunk("RogueApexTracker", addonTable)
 local historyChunk = assert(loadfile("History.lua"))
 historyChunk("RogueApexTracker", addonTable)
+local supportChunk = assert(loadfile("OptionsSupport.lua"))
+supportChunk("RogueApexTracker", addonTable)
 local optionsChunk = assert(loadfile("OptionsClassic.lua"))
 optionsChunk("RogueApexTracker", addonTable)
 
@@ -430,18 +459,27 @@ Expect(type(RAT.db.sessionState) == "table",
 Expect(registeredSettingsPanel ~= nil, "options panel was not registered")
 Expect(registeredSettingsPanel.name == "Rogue Apex Tracker",
     "native vertical settings category name drifted")
-Expect(nativeControls.checkbox >= 7, "native checkbox controls were not registered")
-Expect(nativeControls.slider >= 8, "native slider controls were not registered")
+Expect(nativeControls.checkbox >= 9, "native checkbox controls were not registered")
+Expect(nativeControls.slider >= 13, "native slider controls were not registered")
 Expect(slidersWithFormatter == nativeControls.slider, "one or more sliders have no visible value formatter")
 Expect(nativeControls.dropdown == 3, "native dropdown controls were not registered")
-Expect(nativeControls.color == 3, "native color controls were not registered")
-Expect(nativeControls.header >= 9, "native section headers were not registered")
-Expect(nativeControls.button >= 9, "native action buttons were not registered")
-Expect(nativeButtons["Patreon support"] and nativeButtons["PayPal support"]
-    and nativeButtons["Ko-fi support"], "support-link buttons were not registered")
-Expect(nativeButtons["Options slash command"].text == "/ratmenu"
-    and nativeButtons["History slash command"].text == "/rathistory",
-    "direct slash commands were not shown in the options")
+Expect(nativeControls.color == 4, "native color controls were not registered")
+Expect(nativeControls.header >= 8, "native section headers were not registered")
+Expect(nativeControls.button >= 6, "native action buttons were not registered")
+Expect(nativeControls.custom == 1 and customInitializers[1].template == "RogueApexTrackerSupportFooterTemplate",
+    "subtle support footer was not registered as the final custom row")
+Expect(registeredSettingsPanel.layout.initializers[#registeredSettingsPanel.layout.initializers]
+        == customInitializers[1],
+    "support footer is not the bottom-most options row")
+Expect(nativeButtons["Patreon support"] == nil and nativeButtons["Options slash command"] == nil
+    and nativeButtons["History slash command"] == nil,
+    "legacy support or slash-command menu rows are still visible")
+local supportData = customInitializers[1].data
+Expect(#supportData.links == 3
+    and supportData.links[1].icon:find("Patreon.png", 1, true)
+    and supportData.links[2].icon:find("PayPal.png", 1, true)
+    and supportData.links[3].icon:find("Ko-Fi.png", 1, true),
+    "support footer does not expose the three original logo assets")
 Expect(SLASH_ROGUEAPEXTRACKERMENU1 == "/ratmenu"
     and type(SlashCmdList.ROGUEAPEXTRACKERMENU) == "function",
     "direct options slash command was not registered")
@@ -452,20 +490,23 @@ Expect(sharedMediaFonts and sharedMediaFonts > 5, "embedded LibSharedMedia fonts
 Expect(sharedMediaTextures and sharedMediaTextures > 1, "embedded LibSharedMedia textures were not discovered")
 Expect(RAT.db.fontName == "Friz Quadrata TT", "legacy font name was not migrated")
 Expect(RAT.db.outline == "OUTLINE", "legacy custom outline value was not normalized")
-nativeButtons["Patreon support"].callback()
+RAT:ShowCopyLink("Patreon", supportData.links[1].url)
 local copyLinkPopup = namedFrames.RogueApexTrackerCopyLinkPopup
 Expect(copyLinkPopup and copyLinkPopup.shown == true
     and copyLinkPopup.EditBox.text == "https://www.patreon.com/cw/MidnightSimpleUnitframes",
     "Patreon support button did not expose its copyable URL")
-nativeButtons["PayPal support"].callback()
+RAT:ShowCopyLink("PayPal", supportData.links[2].url)
 Expect(copyLinkPopup.EditBox.text == "https://www.paypal.com/ncp/payment/H3N2P87S53KBQ",
     "PayPal support button did not expose its copyable URL")
-nativeButtons["Ko-fi support"].callback()
+RAT:ShowCopyLink("Ko-fi", supportData.links[3].url)
 Expect(copyLinkPopup.EditBox.text == "https://ko-fi.com/midnightsimpleunitframes#linkModal",
     "Ko-fi support button did not expose its copyable URL")
 copyLinkPopup:Hide()
 Expect(registeredSettings.RAT_BELOW_FOUR_TARGETS ~= nil,
     "the separate below-four-target setting was not registered")
+Expect(registeredSettings.RAT_TRAINING_MODE and registeredSettings.RAT_TRAINING_LOCKED
+    and registeredSettings.RAT_TRAINING_OFFSET_X and registeredSettings.RAT_TRAINING_OFFSET_Y,
+    "separate training-mode controls were not registered")
 Expect(rangeEventFrame and rangeEventFrame.events.NAME_PLATE_UNIT_ADDED == true,
     "strict target tracking did not activate its own nameplate roster")
 registeredSettings.RAT_BELOW_FOUR_TARGETS:SetValue(false)
@@ -525,6 +566,27 @@ registeredSettings.RAT_PREVIEW:SetValue(true)
 Expect(RAT:IsPreviewActive() == true, "native preview checkbox did not enable preview")
 registeredSettings.RAT_PREVIEW:SetValue(false)
 Expect(RAT:IsPreviewActive() == false, "native preview checkbox did not disable preview")
+local trainingDisplay = namedFrames.RogueApexTrackerTrainingFrame
+Expect(trainingDisplay and trainingDisplay.shown == false,
+    "disabled training mode showed its separate alert")
+registeredSettings.RAT_TRAINING_MODE:SetValue(true)
+registeredSettings.RAT_TRAINING_LOCKED:SetValue(false)
+Expect(trainingDisplay.shown == true and trainingDisplay.fonts[1].text == "APEX TRAINING",
+    "unlocked training alert did not expose its independent mover")
+trainingDisplay:SetPoint("CENTER", UIParent, "CENTER", 234, -111)
+trainingDisplay:OnDragStop()
+Expect(RAT.db.trainingOffsetX == 234 and RAT.db.trainingOffsetY == -111,
+    "dragging the training alert did not store its independent position")
+registeredSettings.RAT_TRAINING_LOCKED:SetValue(true)
+Expect(trainingDisplay.shown == false, "locked idle training alert remained visible")
+registeredSettings.RAT_TRAINING_MODE:SetValue(false)
+Expect(RAT:PreviewTrainingFailure() == true and trainingDisplay.shown == true,
+    "training preview did not work while the live mode was disabled")
+local previewTimer = pendingTimers[#pendingTimers]
+previewTimer()
+Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
+    "training preview did not expire at the configured duration")
+registeredSettings.RAT_TRAINING_MODE:SetValue(true)
 Expect(display.shown == true, "eligible Subtlety Deathstalker did not show the tracker")
 Expect(display.fonts[2].text == "ENCOUNTER 0/0  0.0%   SESSION 0/0  0.0%", "initial statistics text drifted")
 Expect(eventFrame.events.UNIT_AURA == nil, "tracker registered direct UNIT_AURA traffic")
@@ -541,6 +603,8 @@ ancient:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
 Expect(es == 0 and ea == 0 and ss == 0 and sa == 0,
     "a four-target Darkest Night empowerment was counted")
+Expect(RAT:IsTrainingAlertActive() == false,
+    "excluded four-target empowerment raised a Darkest Night training failure")
 ancient:SetActive(false)
 darkest:SetActive(false)
 darkest:SetActive(true)
@@ -550,6 +614,13 @@ ancient:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
 Expect(es == 0 and ea == 1 and ss == 0 and sa == 1,
     "Ancient Arts after Darkest Night did not count the three-target out-of-Dance miss")
+Expect(RAT:IsTrainingAlertActive() == true and trainingDisplay.shown == true
+    and trainingDisplay.fonts[1].text == "APEX MISSED - OUTSIDE SHADOW DANCE",
+    "confirmed out-of-Dance APEX use did not raise the immediate training failure")
+local failureTimer = pendingTimers[#pendingTimers]
+failureTimer()
+Expect(RAT:IsTrainingAlertActive() == false and trainingDisplay.shown == false,
+    "live training failure did not expire")
 ancient:SetActive(false)
 dance:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
@@ -563,6 +634,8 @@ ancient:SetActive(true)
 es, ea, ss, sa = RAT:GetStats()
 Expect(es == 1 and ea == 2 and ss == 1 and sa == 2,
     "real Shadow Dance did not convert the confirmed APEX IT use into a success")
+Expect(RAT:IsTrainingAlertActive() == false,
+    "successful in-Dance APEX use incorrectly raised the training failure")
 eventFrame.OnEvent(eventFrame, "PLAYER_LOGIN")
 es, ea, ss, sa = RAT:GetStats()
 Expect(es == 1 and ea == 2 and ss == 1 and sa == 2,
