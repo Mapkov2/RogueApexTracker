@@ -3,7 +3,7 @@
 ## Notes: Darkest Night, Black Powder, and Secret Technique APEX statistics for Subtlety Deathstalker.
 ## Author: Mapko
 ## Category: Combat
-## Version: 1.4.1
+## Version: 1.4.2
 ## X-Website: https://github.com/Mapkov2/RogueApexTracker
 ## X-License: MIT
 ## SavedVariables: RogueApexTrackerDB, MidnightRogueApexTrackerDB

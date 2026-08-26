@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.2 - 2026-08-26
+
+- Fixes APEX tracking after login, reload, or character switching when Blizzard
+  provides Cooldown Manager metadata one frame after RAT's initial scan.
+- Safely rejects protected or inaccessible Cooldown Manager metadata instead of
+  attempting to inspect it.
+
 ## 1.4.1 - 2026-08-25
 
 - Adds user-selectable statistics layouts: compact ranges, one time range per

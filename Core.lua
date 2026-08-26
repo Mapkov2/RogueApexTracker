@@ -154,6 +154,12 @@ local function IsSecret(value)
     return type(_G.issecretvalue) == "function" and _G.issecretvalue(value) == true
 end
 
+local function IsAccessibleTable(value)
+    if type(value) ~= "table" or IsSecret(value) then return false end
+    local canAccess = _G.canaccesstable
+    return type(canAccess) ~= "function" or canAccess(value) ~= false
+end
+
 local function Clamp(value, low, high)
     value = tonumber(value) or low
     if value < low then return low end
@@ -604,19 +610,29 @@ local function IsShadowDanceSpellID(spellID)
 end
 
 local function CooldownInfoContainsSpell(info, spellID)
-    if type(info) ~= "table" then return false end
+    if not IsAccessibleTable(info) then return false end
     if PlainSpellMatch(info.spellID, spellID)
         or PlainSpellMatch(info.overrideSpellID, spellID)
         or PlainSpellMatch(info.overrideTooltipSpellID, spellID)
         or PlainSpellMatch(info.linkedSpellID, spellID) then
         return true
     end
-    if type(info.linkedSpellIDs) == "table" then
+    if IsAccessibleTable(info.linkedSpellIDs) then
         for index = 1, #info.linkedSpellIDs do
             if PlainSpellMatch(info.linkedSpellIDs[index], spellID) then return true end
         end
     end
     return false
+end
+
+local function ResolveCooldownInfoRole(info)
+    if CooldownInfoContainsSpell(info, DARKEST_NIGHT_AURA_ID) then
+        return ROLE_DARKEST
+    elseif CooldownInfoContainsSpell(info, ANCIENT_ARTS_AURA_ID) then
+        return ROLE_ANCIENT
+    elseif CooldownInfoContainsSpell(info, SHADOW_DANCE_AURA_ID) then
+        return ROLE_DANCE
+    end
 end
 
 local function ResolveFrameRole(frame)
@@ -636,15 +652,11 @@ local function ResolveFrameRole(frame)
         if infoOK and not IsSecret(result) then info = result end
     end
 
-    local role
-    if CooldownInfoContainsSpell(info, DARKEST_NIGHT_AURA_ID) then
-        role = ROLE_DARKEST
-    elseif CooldownInfoContainsSpell(info, ANCIENT_ARTS_AURA_ID) then
-        role = ROLE_ANCIENT
-    elseif CooldownInfoContainsSpell(info, SHADOW_DANCE_AURA_ID) then
-        role = ROLE_DANCE
-    end
-    roleByCooldownID[cooldownID] = role or false
+    local role = ResolveCooldownInfoRole(info)
+    -- Never permanently cache a failed early lookup. Cooldown metadata is often
+    -- populated one frame after login/spec changes, especially on character
+    -- switches; a sticky false here made an otherwise valid alt fail until reload.
+    if role then roleByCooldownID[cooldownID] = role end
     return role
 end
 

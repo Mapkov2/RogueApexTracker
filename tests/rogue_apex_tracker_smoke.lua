@@ -463,6 +463,20 @@ for index = 1, #frames do
     if frames[index].events.NAME_PLATE_UNIT_ADDED then rangeEventFrame = frames[index] break end
 end
 Expect(RAT and RAT.db and display, "addon did not initialize")
+local lateMetadataItem = NewItem(99, nil, false)
+BuffIconCooldownViewer.items[#BuffIconCooldownViewer.items + 1] = lateMetadataItem
+local originalCooldownInfoLookup = C_CooldownViewer.GetCooldownViewerCooldownInfo
+C_CooldownViewer.GetCooldownViewerCooldownInfo = function(cooldownID)
+    if cooldownID == lateMetadataItem.cooldownID then return lateMetadataItem.info end
+    return originalCooldownInfoLookup(cooldownID)
+end
+RAT:RefreshDrivers()
+Expect(RAT._Test.RoleByFrame[lateMetadataItem] == nil,
+    "an item without loaded cooldown metadata unexpectedly received a role")
+lateMetadataItem.info = { spellID = 457280 }
+RAT:RefreshDrivers()
+Expect(RAT._Test.RoleByFrame[lateMetadataItem] == "darkestNight",
+    "late cooldown metadata remained stuck behind the failed startup lookup cache")
 Expect(RogueApexTrackerDB == RAT.db and MidnightRogueApexTrackerDB == nil,
     "legacy SavedVariables were not migrated to RogueApexTrackerDB")
 Expect(type(RAT.db.sessionState) == "table",
